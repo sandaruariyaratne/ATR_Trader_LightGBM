@@ -1,0 +1,38 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+
+# Virtual environments
+.venv/
+env/
+venv/
+
+# Local dev & testing
+scratch/
+tests/
+pip_cache/
+tmp/
+
+# Training / raw data (large CSVs — excluded to keep image small)
+data/SOLUSDT.csv
+data/SOLUSDT_labeled.csv
+data/*.csv
+
+# Logs — mounted as a volume at runtime
+logs/
+
+# Git
+.git/
+.gitignore
+
+# macOS
+.DS_Store
+
+# Environment files (mounted as volume at runtime)
+.env
+.env.*
+
+# Tarballs from previous deploys
+*.tar.gz
