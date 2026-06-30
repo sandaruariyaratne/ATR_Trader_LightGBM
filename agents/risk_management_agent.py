@@ -170,28 +170,15 @@ class RiskManagementAgent:
         atr: float,
     ) -> float:
         """
-        Fractional Kelly position sizing with volatility scaling.
+        Fixed notional position sizing using settings.max_position_pct.
 
-        quantity = (equity × max_pct × kelly_fraction × volatility_scale) / entry_price
+        quantity = (equity × max_position_pct) / entry_price
         """
         if entry_price <= 0:
             return 0.0
 
         equity = self.state.equity
-        base_capital = equity * self.settings.max_position_pct
-        kelly = self.rp.kelly_fraction
-
-        # Volatility scaling: reduce size when ATR is high
-        if atr > 0 and entry_price > 0:
-            atr_pct = atr / entry_price
-            vol_scale = max(0.25, 1.0 - atr_pct * 10)
-        else:
-            vol_scale = 1.0
-
-        # Confidence scaling: reduce size below 0.8 confidence
-        conf_scale = min(signal.confidence / 0.8, 1.0)
-
-        notional = base_capital * kelly * vol_scale * conf_scale
+        notional = equity * self.settings.max_position_pct
         return notional / entry_price
 
     def _compute_sl_tp(

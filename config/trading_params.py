@@ -65,8 +65,7 @@ class FeatureParams:
 
 @dataclass(frozen=True)
 class RiskParams:
-    # Kelly fraction (conservative: half-Kelly)
-    kelly_fraction: float = 0.5
+
 
     # Minimum order size in quote currency (USDT)
     min_order_value: float = 10.0
