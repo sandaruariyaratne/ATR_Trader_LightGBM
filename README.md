@@ -131,3 +131,11 @@ A dedicated sync script downloads the latest trade logs from the VM to your loca
 bash scripts/sync_trades.sh
 ```
 Use `cat data/trades_log.csv` to view the local copy.
+
+
+BOT STARTED - 2026.06.29 12.12pm P.M (SRI LANKAN TIME)
+
+# Initial Capital - $10,000
+
+# Confidence Threshold - 48%
+

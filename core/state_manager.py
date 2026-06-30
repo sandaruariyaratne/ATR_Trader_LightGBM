@@ -211,8 +211,52 @@ class StateManager:
                         "Opened_At",
                         "Closed_At",
                         "Exit_Reason",
-                        "Total_Balance"
+                        "Total_Balance",
+                        "Profit_Loss"
                     ])
+            else:
+                # Migrate existing file if the new column is missing
+                with open(self.csv_path, mode="r", newline="") as f:
+                    reader = list(csv.reader(f))
+                
+                if reader and len(reader) > 0:
+                    header = reader[0]
+                    if "Profit_Loss" not in header:
+                        new_rows = []
+                        # Add header
+                        header.append("Profit_Loss")
+                        new_rows.append(header)
+                        
+                        # Find indices
+                        event_idx = header.index("Event") if "Event" in header else 1
+                        pnl_idx = header.index("PnL_USD") if "PnL_USD" in header else 7
+                        
+                        # Add column to existing rows
+                        for row in reader[1:]:
+                            if len(row) < len(header) - 1:
+                                row.append("N/A")
+                            else:
+                                try:
+                                    event = row[event_idx]
+                                    if event == "EXIT":
+                                        pnl_val = float(row[pnl_idx])
+                                        if pnl_val > 0:
+                                            row.append("PROFIT")
+                                        elif pnl_val < 0:
+                                            row.append("LOSS")
+                                        else:
+                                            row.append("BREAKEVEN")
+                                    else:
+                                        row.append("N/A")
+                                except Exception:
+                                    row.append("N/A")
+                            new_rows.append(row)
+                        
+                        # Write migrated rows back
+                        with open(self.csv_path, mode="w", newline="") as f:
+                            writer = csv.writer(f)
+                            writer.writerows(new_rows)
+                        logger.info("state.csv_migrated_successfully", path=self.csv_path)
         except Exception as e:
             logger.error("state.csv_init_failed", error=str(e))
 
@@ -231,6 +275,16 @@ class StateManager:
         exit_reason: str,
     ) -> None:
         try:
+            if event == "EXIT":
+                if pnl_usd > 0:
+                    profit_loss = "PROFIT"
+                elif pnl_usd < 0:
+                    profit_loss = "LOSS"
+                else:
+                    profit_loss = "BREAKEVEN"
+            else:
+                profit_loss = "N/A"
+
             with open(self.csv_path, mode="a", newline="") as f:
                 writer = csv.writer(f)
                 writer.writerow([
@@ -247,6 +301,7 @@ class StateManager:
                     closed_at,
                     exit_reason,
                     round(self.equity, 2),
+                    profit_loss,
                 ])
         except Exception as e:
             logger.error("state.csv_write_failed", error=str(e))

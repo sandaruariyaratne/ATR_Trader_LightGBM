@@ -252,10 +252,13 @@ class ExecutionAgent:
         price: float,
         reason: str,
     ) -> None:
+        fee_rate = getattr(self.settings, "fee_rate", 0.0010)
+        fee = (pos.entry_price + price) * pos.quantity * (fee_rate / 2.0)
+
         if pos.side == "long":
-            pnl = (price - pos.entry_price) * pos.quantity
+            pnl = (price - pos.entry_price) * pos.quantity - fee
         else:
-            pnl = (pos.entry_price - price) * pos.quantity
+            pnl = (pos.entry_price - price) * pos.quantity - fee
 
         record = await self.state.close_position(order_id, price, reason, pnl)
 
@@ -276,6 +279,7 @@ class ExecutionAgent:
             order_id=order_id,
             reason=reason,
             pnl=round(pnl, 4),
+            fee=round(fee, 4),
             price=price,
         )
 
