@@ -50,7 +50,7 @@ class TradeRecord:
 class StateManager:
     """Central mutable state container for the trading system."""
 
-    def __init__(self, initial_capital: float) -> None:
+    def __init__(self, initial_capital: float, csv_path: Optional[str] = None) -> None:
         self._lock = asyncio.Lock()
 
         # ── Capital ───────────────────────────────────────────────────────────
@@ -78,8 +78,16 @@ class StateManager:
         self.latest_atr: float = 0.0
 
         # ── CSV Logging ───────────────────────────────────────────────────────
-        self.csv_path: str = "data/trades_log.csv"
-        self._init_csv()
+        import sys
+        if csv_path is not None:
+            self.csv_path = csv_path
+        elif "pytest" in sys.modules or "unittest" in sys.modules:
+            self.csv_path = None
+        else:
+            self.csv_path = "data/trades_log.csv"
+
+        if self.csv_path:
+            self._init_csv()
 
         logger.info("state_manager.init", initial_capital=initial_capital)
 
@@ -193,6 +201,8 @@ class StateManager:
 
     def _init_csv(self) -> None:
         """Initialize the CSV log file with headers if it doesn't exist."""
+        if not self.csv_path:
+            return
         try:
             os.makedirs(os.path.dirname(self.csv_path), exist_ok=True)
             if not os.path.exists(self.csv_path):
@@ -274,6 +284,8 @@ class StateManager:
         closed_at: str,
         exit_reason: str,
     ) -> None:
+        if not self.csv_path:
+            return
         try:
             if event == "EXIT":
                 if pnl_usd > 0:
