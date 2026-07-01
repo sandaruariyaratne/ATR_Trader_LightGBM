@@ -108,14 +108,15 @@ def _build_feature_matrix(df: pd.DataFrame) -> pd.DataFrame:
     h = df["high"].values
     l = df["low"].values
     c = df["close"].values
-    df["atr"] = pd.Series(range(len(c))).rolling(P.atr_period + 1).apply(
-        lambda idx: atr_fn(
-            h[int(idx[0]) : int(idx[-1]) + 1].tolist(),
-            l[int(idx[0]) : int(idx[-1]) + 1].tolist(),
-            c[int(idx[0]) : int(idx[-1]) + 1].tolist(),
-            P.atr_period,
-        ), raw=True,
+    
+    # Fully vectorized ATR calculation to avoid slow rolling apply on millions of rows
+    tr = np.zeros(len(c))
+    tr[0] = h[0] - l[0]
+    tr[1:] = np.maximum(
+        h[1:] - l[1:],
+        np.maximum(np.abs(h[1:] - c[:-1]), np.abs(l[1:] - c[:-1]))
     )
+    df["atr"] = pd.Series(tr).rolling(window=P.atr_period).mean()
     return df
 
 
@@ -155,8 +156,11 @@ def run_backtest(
 
     open_positions: List[BacktestTrade] = []
 
-    for i, row in df.iterrows():
-        close = row["close"]
+    closes = df["close"].values
+    atrs = df["atr"].values
+
+    for i in range(len(df)):
+        close = closes[i]
 
         # ── Check open positions for SL/TP ──────────────────────────────────
         active_positions = []
@@ -200,7 +204,7 @@ def run_backtest(
 
         if len(open_positions) < max_open_positions and confidence >= confidence_threshold and action in ("BUY", "SELL"):
             qty = (equity * max_position_pct) / close
-            atr = row["atr"]
+            atr = atrs[i]
             if action == "BUY":
                 sl = close - (stop_loss_atr_mult * atr)
                 tp = close + (take_profit_atr_mult * atr)

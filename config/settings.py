@@ -36,8 +36,8 @@ class Settings(BaseSettings):
     initial_capital: float = Field(default=10_000.0, gt=0)
     max_position_pct: float = Field(default=0.10, gt=0, le=1.0)
     max_drawdown_pct: float = Field(default=0.15, gt=0, le=1.0)
-    stop_loss_atr_mult: float = Field(default=1.0, gt=0)
-    take_profit_atr_mult: float = Field(default=2.0, gt=0)
+    stop_loss_atr_mult: float = Field(default=2.0, gt=0)
+    take_profit_atr_mult: float = Field(default=4.0, gt=0)
     max_open_positions: int = Field(default=100, ge=1)
 
     # ── Model ─────────────────────────────────────────────────────────────────
