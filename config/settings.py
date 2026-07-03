@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     # ── Model ─────────────────────────────────────────────────────────────────
     model_type: Literal["xgboost", "onnx", "torch"] = Field(default="xgboost")
     model_path: Path = Field(default=Path("data/models/lightgbm_SOLUSDT.pkl"))
-    confidence_threshold: float = Field(default=0.48, ge=0.4, le=1.0)
+    confidence_threshold: float = Field(default=0.50, ge=0.4, le=1.0)
     feature_window: int = Field(default=50, ge=20)
 
     # ── Pipeline ──────────────────────────────────────────────────────────────

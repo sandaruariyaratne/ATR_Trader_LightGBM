@@ -96,8 +96,18 @@ def main(
     fee_rate: float,
 ) -> None:
     print(f"Loading data from {csv_path} …")
-    df = pd.read_csv(csv_path)
-    df.columns = [c.lower() for c in df.columns]
+    with open(csv_path, "r") as f:
+        first_line = f.readline()
+    delim = "|" if "|" in first_line else ","
+    if delim == "|":
+        df = pd.read_csv(csv_path, sep=delim, header=None)
+        df.columns = [
+            "timestamp", "open", "high", "low", "close", "volume",
+            "taker_buy_quote_volume", "taker_buy_base_volume", "quote_volume", "trades"
+        ]
+    else:
+        df = pd.read_csv(csv_path)
+        df.columns = [c.lower() for c in df.columns]
 
     # Map numeric labels to standard strings for system-wide compatibility
     tbm_map = {
@@ -106,24 +116,27 @@ def main(
         "2": "BUY", "0": "SELL", "1": "HOLD",
         "2.0": "BUY", "0.0": "SELL", "1.0": "HOLD"
     }
-    if df["label"].isin(tbm_map.keys()).any():
+    if "label" in df.columns and df["label"].isin(tbm_map.keys()).any():
         print("Mapping numeric labels (2, 0, 1) back to class strings (BUY, SELL, HOLD) …")
         df["label"] = df["label"].map(tbm_map)
 
-    # If stationary features are not already present, build them on-the-fly
-    if "log_return_5m" not in df.columns:
-        print("Stationary features not found in CSV. Building them on-the-fly...")
+    required_cols = [
+        "log_return_5m", "log_return_15m", "log_return_30m", "log_return_1h", "log_return_4h",
+        "vwap_dev_15m", "vwap_dev_1h", "vwap_dev_4h"
+    ]
+    if any(col not in df.columns for col in required_cols):
+        print("Required optimal features not found in CSV. Rebuilding on-the-fly...")
         df = build_stationary_features(df)
         df["label"] = make_dynamic_volatility_labels(df, window=label_window, tp_mult=tp_mult, sl_mult=sl_mult, fee_rate=fee_rate)
+        df = df[df["label"] != -1].reset_index(drop=True)
+        df["label"] = df["label"].map(tbm_map)
         df.dropna(inplace=True)
 
-    exclude_cols = (
-        "timestamp", "label", "open", "high", "low", "close", "volume",
-        "quote_volume", "taker_buy_base_volume", "taker_buy_quote_volume", "trades",
-        "taker_buy_ratio", "quote_vol_dominance", "avg_trade_size_change_5m",
-        "net_taker_flow_5m", "net_taker_flow_15m", "whale_buying_factor_5m"
-    )
-    feature_cols = [c for c in df.columns if c not in exclude_cols]
+    feature_cols = [
+        "log_return_5m", "log_return_15m", "log_return_30m", "log_return_1h", "log_return_4h",
+        "vwap_dev_15m", "vwap_dev_1h", "vwap_dev_4h"
+    ]
+    print(f"Training on 8 core features: {feature_cols}")
     X = df[feature_cols].values
     le = LabelEncoder()
     y = le.fit_transform(df["label"])

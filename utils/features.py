@@ -22,8 +22,8 @@ def build_stationary_features(df: pd.DataFrame) -> pd.DataFrame:
     epsilon = 1e-8
 
     # 1. Log Returns (Short-term and mid-term momentum anchors)
-    for n in [5, 15]:
-        df[f"log_return_{n}m"] = np.log(df["close"] / df["close"].shift(n))
+    for name, n in [("5m", 5), ("15m", 15), ("30m", 30), ("1h", 60), ("4h", 240)]:
+        df[f"log_return_{name}"] = np.log(df["close"] / df["close"].shift(n))
 
     # 2. Candle Body and Wick Ratios (Microscopic structural geometry)
     hl_range = df["high"] - df["low"]
@@ -35,10 +35,10 @@ def build_stationary_features(df: pd.DataFrame) -> pd.DataFrame:
     df["upper_wick_ratio"] = upper_wick / (hl_range + epsilon)
     df["lower_wick_ratio"] = lower_wick / (hl_range + epsilon)
 
-    # 3. Distance from Rolling VWAP (5m, 15m, 1h baseline tracking)
+    # 3. Distance from Rolling VWAP (5m, 15m, 1h, 4h baseline tracking)
     tp = (df["high"] + df["low"] + df["close"]) / 3.0
     tp_vol = tp * df["volume"]
-    for name, w in [("5m", 5), ("15m", 15), ("1h", 60)]:
+    for name, w in [("5m", 5), ("15m", 15), ("1h", 60), ("4h", 240)]:
         tp_vol_sum = tp_vol.rolling(window=w).sum()
         vol_sum = df["volume"].rolling(window=w).sum()
         vwap = np.where(vol_sum > 0, tp_vol_sum / vol_sum, df["close"])
