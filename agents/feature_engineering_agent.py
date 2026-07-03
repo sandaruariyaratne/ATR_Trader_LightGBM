@@ -63,11 +63,11 @@ class FeatureEngineeringAgent:
         await self.state.update_market_feed(event.close, event.indicators.get("atr", 0.0))
 
         candles = event.raw_candles
-        if len(candles) < 60:
+        if len(candles) < 241:
             logger.debug(
                 "feature_eng_agent.warming_up",
                 have=len(candles),
-                need=60,
+                need=241,
             )
             return None
 

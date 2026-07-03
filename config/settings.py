@@ -48,7 +48,7 @@ class Settings(BaseSettings):
 
     # ── Pipeline ──────────────────────────────────────────────────────────────
     queue_max_size: int = Field(default=500, ge=10)
-    candle_buffer_size: int = Field(default=200, ge=50)
+    candle_buffer_size: int = Field(default=300, ge=50)
 
     # ── Logging ───────────────────────────────────────────────────────────────
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = Field(default="INFO")
