@@ -90,41 +90,88 @@ class MarketDataAgent:
                 await self._exchange.close()
 
     async def _seed_history(self) -> None:
-        """Pre-fill the candle buffer with historical data."""
+        """Pre-fill the candle buffer with historical 10-column data."""
         logger.info("market_data_agent.seeding_history", bars=self.settings.candle_buffer_size)
-        since = now_ms() - self.settings.candle_buffer_size * self.interval_ms
-        candles = await self._exchange.fetch_ohlcv(
-            self.symbol, self.interval, since=since, limit=self.settings.candle_buffer_size
-        )
-        for c in candles:
-            self._candles.append(c)
-        if self._candles:
-            self._last_candle_ts = self._candles[-1][I_TS]
-        logger.info("market_data_agent.history_loaded", bars=len(self._candles))
+        
+        # Format symbol for Binance REST API (e.g. SOLUSDT)
+        binance_symbol = self.symbol.replace("/", "").replace(":", "")
+        params = {
+            "symbol": binance_symbol,
+            "interval": self.interval,
+            "limit": self.settings.candle_buffer_size,
+        }
+        
+        try:
+            # Try futures endpoint first, fallback to spot
+            try:
+                raw_klines = await self._exchange.fapiPublicGetKlines(params)
+            except Exception:
+                raw_klines = await self._exchange.publicGetKlines(params)
+                
+            for c in raw_klines:
+                parsed = [
+                    int(c[0]),          # timestamp
+                    float(c[1]),        # open
+                    float(c[2]),        # high
+                    float(c[3]),        # low
+                    float(c[4]),        # close
+                    float(c[5]),        # volume
+                    float(c[10]),       # taker_buy_quote_volume
+                    float(c[9]),        # taker_buy_base_volume
+                    float(c[7]),        # quote_volume
+                    float(c[8]),        # trades
+                ]
+                self._candles.append(parsed)
+            if self._candles:
+                self._last_candle_ts = self._candles[-1][I_TS]
+            logger.info("market_data_agent.history_loaded", bars=len(self._candles))
+        except Exception as exc:
+            logger.error("market_data_agent.seeding_failed", error=str(exc))
+            raise
 
     async def _stream_candles(self) -> None:
-        """WebSocket streaming loop — reconnects on error."""
-        consecutive_errors = 0
+        """Fetch completed candles at the start of each minute boundary."""
+        binance_symbol = self.symbol.replace("/", "").replace(":", "")
+        params = {
+            "symbol": binance_symbol,
+            "interval": self.interval,
+            "limit": 5,
+        }
+        
         while True:
             try:
-                candles = await self._exchange.watch_ohlcv(self.symbol, self.interval)
-                consecutive_errors = 0
-                await self._process_candles(candles)
+                # Poll REST API at boundary closes (more stable for full 10 columns)
+                try:
+                    raw_klines = await self._exchange.fapiPublicGetKlines(params)
+                except Exception:
+                    raw_klines = await self._exchange.publicGetKlines(params)
+                    
+                parsed_klines = []
+                for c in raw_klines:
+                    parsed = [
+                        int(c[0]),          # timestamp
+                        float(c[1]),        # open
+                        float(c[2]),        # high
+                        float(c[3]),        # low
+                        float(c[4]),        # close
+                        float(c[5]),        # volume
+                        float(c[10]),       # taker_buy_quote_volume
+                        float(c[9]),        # taker_buy_base_volume
+                        float(c[7]),        # quote_volume
+                        float(c[8]),        # trades
+                    ]
+                    parsed_klines.append(parsed)
+                    
+                await self._process_candles(parsed_klines)
+                await asyncio.sleep(2) # poll every 2 seconds
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                consecutive_errors += 1
-                wait = min(2 ** consecutive_errors, 60)
-                logger.warning(
-                    "market_data_agent.ws_error",
-                    error=str(exc),
-                    retry_in=wait,
-                    consecutive=consecutive_errors,
-                )
-                await asyncio.sleep(wait)
+                logger.warning("market_data_agent.poll_error", error=str(exc))
+                await asyncio.sleep(5)
 
     async def _process_candles(self, incoming: List[list]) -> None:
-        """Handle a batch of candles from the WebSocket stream."""
+        """Handle a batch of candles from the REST response."""
         for candle in incoming:
             ts = candle[I_TS]
             candle_open = candle_open_ms(ts, self.interval_ms)
@@ -140,7 +187,7 @@ class MarketDataAgent:
             # Compute indicators and emit
             event = self._build_event(candle)
             await self.bus.publish("market_state", event)
-            logger.debug(
+            logger.info(
                 "market_data_agent.candle_emitted",
                 ts=candle_open,
                 close=candle[I_C],

@@ -61,6 +61,12 @@ class ExecutionAgent:
         )
         if not self.settings.paper_trading:
             self._exchange = self._build_exchange()
+            try:
+                if hasattr(self._exchange, "set_leverage"):
+                    await self._exchange.set_leverage(int(self.settings.leverage), self.settings.trading_symbol)
+                    logger.info("execution_agent.leverage_configured", leverage=self.settings.leverage)
+            except Exception as exc:
+                logger.warning("execution_agent.set_leverage_failed", error=str(exc))
 
         order_listener = asyncio.create_task(self._order_listener())
         position_monitor = asyncio.create_task(self._position_monitor())

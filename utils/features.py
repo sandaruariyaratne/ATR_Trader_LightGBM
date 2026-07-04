@@ -110,6 +110,28 @@ def build_stationary_features(df: pd.DataFrame) -> pd.DataFrame:
         df["tvi_15m"] = net_flow.rolling(15).sum() / (df["volume"].rolling(15).sum() + epsilon)
         df["tvi_1h"] = net_flow.rolling(60).sum() / (df["volume"].rolling(60).sum() + epsilon)
 
+    # 13. Taker Order Flow Imbalance (TOFI / OBI Proxies)
+    if "taker_buy_base_volume" in df.columns:
+        taker_buy = df["taker_buy_base_volume"].values
+        total_vol = df["volume"].values
+        taker_sell = total_vol - taker_buy
+        net_taker_flow = taker_buy - taker_sell
+        
+        df["taker_imbalance_1m"] = net_taker_flow / (total_vol + epsilon)
+        for w in [5, 15, 60, 240]:
+            net_sum = pd.Series(net_taker_flow).rolling(w).sum().values
+            vol_sum = pd.Series(total_vol).rolling(w).sum().values
+            df[f"taker_imbalance_{w}m"] = net_sum / (vol_sum + epsilon)
+
+    # 14. Force Index & Volume Acceleration
+    price_change = df["close"] - df["close"].shift(1)
+    df["force_index_1m"] = price_change * df["volume"]
+    df["force_index_5m"] = df["force_index_1m"].rolling(5).mean()
+    df["force_index_15m"] = df["force_index_1m"].rolling(15).mean()
+    
+    vol_mean_240 = df["volume"].rolling(240).mean().values
+    df["volume_acc_15m"] = df["volume"].rolling(15).mean().values / (vol_mean_240 + epsilon)
+
     return df
 
 

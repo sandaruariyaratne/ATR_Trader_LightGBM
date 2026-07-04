@@ -30,20 +30,22 @@ class Settings(BaseSettings):
     trading_symbol: str = Field(default="SOL/USDT")
     candle_interval: str = Field(default="1m")
     paper_trading: bool = Field(default=True, description="Disable real orders when True")
-    fee_rate: float = Field(default=0.0010, description="Round-trip commission fee rate (e.g. 0.0010 for 10 bps)")
+    fee_rate: float = Field(default=0.0002, description="Round-trip commission fee rate (e.g. 0.0002 for 2 bps VIP maker fee)")
 
     # ── Capital & Risk ────────────────────────────────────────────────────────
     initial_capital: float = Field(default=10_000.0, gt=0)
-    max_position_pct: float = Field(default=0.10, gt=0, le=1.0)
+    max_position_pct: float = Field(default=0.10, gt=0, le=2.5)  # 10% margin position size per trade
+    leverage: float = Field(default=2.0, gt=0, description="Leverage multiplier for position sizing")
+    sell_only: bool = Field(default=True, description="Restrict trading to SELL/short signals only")
     max_drawdown_pct: float = Field(default=0.15, gt=0, le=1.0)
-    stop_loss_atr_mult: float = Field(default=1.5, gt=0)
-    take_profit_atr_mult: float = Field(default=3.0, gt=0)
-    max_open_positions: int = Field(default=2, ge=1)
+    stop_loss_atr_mult: float = Field(default=1.5, gt=0)  # Optimal SL mult
+    take_profit_atr_mult: float = Field(default=3.0, gt=0)  # Optimal TP mult
+    max_open_positions: int = Field(default=5, ge=1)
 
     # ── Model ─────────────────────────────────────────────────────────────────
     model_type: Literal["xgboost", "onnx", "torch"] = Field(default="xgboost")
-    model_path: Path = Field(default=Path("data/models/lightgbm_SOLUSDT.pkl"))
-    confidence_threshold: float = Field(default=0.54, ge=0.4, le=1.0)
+    model_path: Path = Field(default=Path("data/models/lightgbm_universal.pkl"))
+    confidence_threshold: float = Field(default=0.42, ge=0.4, le=1.0)  # Optimal confidence gate
     feature_window: int = Field(default=50, ge=20)
 
     # ── Pipeline ──────────────────────────────────────────────────────────────

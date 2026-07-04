@@ -80,8 +80,14 @@ class RiskManagementAgent:
     # ── Evaluation ────────────────────────────────────────────────────────────
 
     async def _evaluate(self, signal: TradeSignalEvent) -> Optional[ApprovedOrderEvent]:
-        # ── 1. HOLD signals never execute ─────────────────────────────────────
+        # ── 1. HOLD signals never execute, reject BUY if sell_only is enabled ──
         if signal.action == "HOLD":
+            return None
+        if self.settings.sell_only and signal.action == "BUY":
+            logger.debug(
+                "risk_agent.buy_signal_rejected_sell_only",
+                symbol=signal.symbol,
+            )
             return None
 
         # ── 2. Confidence gate ────────────────────────────────────────────────
@@ -170,15 +176,15 @@ class RiskManagementAgent:
         atr: float,
     ) -> float:
         """
-        Fixed notional position sizing using settings.max_position_pct.
+        Fixed notional position sizing scaling by leverage factor.
 
-        quantity = (equity × max_position_pct) / entry_price
+        quantity = (equity × max_position_pct × leverage) / entry_price
         """
         if entry_price <= 0:
             return 0.0
 
         equity = self.state.equity
-        notional = equity * self.settings.max_position_pct
+        notional = equity * self.settings.max_position_pct * self.settings.leverage
         return notional / entry_price
 
     def _compute_sl_tp(

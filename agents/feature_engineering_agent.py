@@ -71,10 +71,13 @@ class FeatureEngineeringAgent:
             )
             return None
 
-        # Build DataFrame from raw candles list
+        # Build DataFrame from raw 10-column candles list
         df = pd.DataFrame(
             candles,
-            columns=["timestamp", "open", "high", "low", "close", "volume"]
+            columns=[
+                "timestamp", "open", "high", "low", "close", "volume",
+                "taker_buy_quote_volume", "taker_buy_base_volume", "quote_volume", "trades"
+            ]
         )
 
         # Classify market regime using ADX
