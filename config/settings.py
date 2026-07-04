@@ -36,14 +36,14 @@ class Settings(BaseSettings):
     initial_capital: float = Field(default=10_000.0, gt=0)
     max_position_pct: float = Field(default=0.10, gt=0, le=1.0)
     max_drawdown_pct: float = Field(default=0.15, gt=0, le=1.0)
-    stop_loss_atr_mult: float = Field(default=2.0, gt=0)
-    take_profit_atr_mult: float = Field(default=4.0, gt=0)
-    max_open_positions: int = Field(default=100, ge=1)
+    stop_loss_atr_mult: float = Field(default=1.5, gt=0)
+    take_profit_atr_mult: float = Field(default=3.0, gt=0)
+    max_open_positions: int = Field(default=2, ge=1)
 
     # ── Model ─────────────────────────────────────────────────────────────────
     model_type: Literal["xgboost", "onnx", "torch"] = Field(default="xgboost")
     model_path: Path = Field(default=Path("data/models/lightgbm_SOLUSDT.pkl"))
-    confidence_threshold: float = Field(default=0.50, ge=0.4, le=1.0)
+    confidence_threshold: float = Field(default=0.54, ge=0.4, le=1.0)
     feature_window: int = Field(default=50, ge=20)
 
     # ── Pipeline ──────────────────────────────────────────────────────────────

@@ -122,7 +122,13 @@ def main(
 
     required_cols = [
         "log_return_5m", "log_return_15m", "log_return_30m", "log_return_1h", "log_return_4h",
-        "vwap_dev_15m", "vwap_dev_1h", "vwap_dev_4h"
+        "vwap_dev_5m", "vwap_dev_15m", "vwap_dev_1h", "vwap_dev_4h",
+        "relative_volume", "volatility_5m", "net_taker_flow_5m", "net_taker_flow_15m",
+        "volume_weighted_return_5m", "whale_buying_factor_5m", "vwap_dev_slope_3m",
+        "candle_body_ratio", "upper_wick_ratio", "lower_wick_ratio",
+        "extreme_ratio_1h", "extreme_ratio_4h",
+        "volatility_1h", "volatility_4h", "volatility_ratio",
+        "tvi_5m", "tvi_15m", "tvi_1h"
     ]
     if any(col not in df.columns for col in required_cols):
         print("Required optimal features not found in CSV. Rebuilding on-the-fly...")
@@ -134,9 +140,17 @@ def main(
 
     feature_cols = [
         "log_return_5m", "log_return_15m", "log_return_30m", "log_return_1h", "log_return_4h",
-        "vwap_dev_15m", "vwap_dev_1h", "vwap_dev_4h"
+        "vwap_dev_5m", "vwap_dev_15m", "vwap_dev_1h", "vwap_dev_4h",
+        "relative_volume", "volatility_5m", "net_taker_flow_5m", "net_taker_flow_15m",
+        "volume_weighted_return_5m", "whale_buying_factor_5m", "vwap_dev_slope_3m",
+        "candle_body_ratio", "upper_wick_ratio", "lower_wick_ratio",
+        "extreme_ratio_1h", "extreme_ratio_4h",
+        "volatility_1h", "volatility_4h", "volatility_ratio",
+        "tvi_5m", "tvi_15m", "tvi_1h"
     ]
-    print(f"Training on 8 core features: {feature_cols}")
+    # Filter only features present in df in case of data columns mismatch
+    feature_cols = [c for c in feature_cols if c in df.columns]
+    print(f"Training on {len(feature_cols)} features: {feature_cols}")
     X = df[feature_cols].values
     le = LabelEncoder()
     y = le.fit_transform(df["label"])

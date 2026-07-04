@@ -87,6 +87,29 @@ def build_stationary_features(df: pd.DataFrame) -> pd.DataFrame:
     # 9. Trend Acceleration (Velocity change away from volume baseline)
     df["vwap_dev_slope_3m"] = (df["vwap_dev_5m"] - df["vwap_dev_5m"].shift(2)) / 2.0
 
+    # 10. Trend & Extremes (Proximity to local highs and lows)
+    roll_min_1h = df["low"].rolling(60).min()
+    roll_max_1h = df["high"].rolling(60).max()
+    df["extreme_ratio_1h"] = (df["close"] - roll_min_1h) / (roll_max_1h - roll_min_1h + epsilon)
+
+    roll_min_4h = df["low"].rolling(240).min()
+    roll_max_4h = df["high"].rolling(240).max()
+    df["extreme_ratio_4h"] = (df["close"] - roll_min_4h) / (roll_max_4h - roll_min_4h + epsilon)
+
+    # 11. Volatility Regimes (standard deviation of log returns)
+    df["volatility_1h"] = log_ret_1m.rolling(60).std(ddof=1)
+    df["volatility_4h"] = log_ret_1m.rolling(240).std(ddof=1)
+    df["volatility_ratio"] = df["volatility_5m"] / (df["volatility_4h"] + epsilon)
+
+    # 12. TVI Order Flow Microstructure
+    if "taker_buy_base_volume" in df.columns:
+        taker_buy = df["taker_buy_base_volume"]
+        taker_sell = df["volume"] - taker_buy
+        net_flow = taker_buy - taker_sell
+        df["tvi_5m"] = net_flow.rolling(5).sum() / (df["volume"].rolling(5).sum() + epsilon)
+        df["tvi_15m"] = net_flow.rolling(15).sum() / (df["volume"].rolling(15).sum() + epsilon)
+        df["tvi_1h"] = net_flow.rolling(60).sum() / (df["volume"].rolling(60).sum() + epsilon)
+
     return df
 
 
