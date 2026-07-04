@@ -1,26 +1,124 @@
 version: '3.8'
 
 services:
-  trader:
+  sol-trader:
     build: .
-    container_name: atr-trader-lgbm
+    container_name: atr-trader-sol
     restart: unless-stopped
     volumes:
-      # Persist live trading logs on the host
       - ./logs:/app/logs
-      # Mount .env so settings can be changed without rebuilding image
       - .env:/app/.env
-      # Mount data folder — includes the trained LightGBM model and any future models
       - ./data:/app/data
     environment:
-      # Pass critical settings as environment variables (override settings.py defaults)
       - PAPER_TRADING=true
       - TRADING_SYMBOL=SOL/USDT
       - CANDLE_INTERVAL=1m
       - INITIAL_CAPITAL=10000
-      - CONFIDENCE_THRESHOLD=0.48
-      - MODEL_PATH=data/models/lightgbm_SOLUSDT.pkl
+      - CONFIDENCE_THRESHOLD=0.42
+      - MODEL_PATH=data/models/lightgbm_universal.pkl
       - MODEL_TYPE=xgboost
+      - LEVERAGE=2.0
+      - SELL_ONLY=true
+      - PYTHONUNBUFFERED=1
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  btc-trader:
+    build: .
+    container_name: atr-trader-btc
+    restart: unless-stopped
+    volumes:
+      - ./logs:/app/logs
+      - .env:/app/.env
+      - ./data:/app/data
+    environment:
+      - PAPER_TRADING=true
+      - TRADING_SYMBOL=BTC/USDT
+      - CANDLE_INTERVAL=1m
+      - INITIAL_CAPITAL=10000
+      - CONFIDENCE_THRESHOLD=0.42
+      - MODEL_PATH=data/models/lightgbm_universal.pkl
+      - MODEL_TYPE=xgboost
+      - LEVERAGE=2.0
+      - SELL_ONLY=true
+      - PYTHONUNBUFFERED=1
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  eth-trader:
+    build: .
+    container_name: atr-trader-eth
+    restart: unless-stopped
+    volumes:
+      - ./logs:/app/logs
+      - .env:/app/.env
+      - ./data:/app/data
+    environment:
+      - PAPER_TRADING=true
+      - TRADING_SYMBOL=ETH/USDT
+      - CANDLE_INTERVAL=1m
+      - INITIAL_CAPITAL=10000
+      - CONFIDENCE_THRESHOLD=0.42
+      - MODEL_PATH=data/models/lightgbm_universal.pkl
+      - MODEL_TYPE=xgboost
+      - LEVERAGE=2.0
+      - SELL_ONLY=true
+      - PYTHONUNBUFFERED=1
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  bnb-trader:
+    build: .
+    container_name: atr-trader-bnb
+    restart: unless-stopped
+    volumes:
+      - ./logs:/app/logs
+      - .env:/app/.env
+      - ./data:/app/data
+    environment:
+      - PAPER_TRADING=true
+      - TRADING_SYMBOL=BNB/USDT
+      - CANDLE_INTERVAL=1m
+      - INITIAL_CAPITAL=10000
+      - CONFIDENCE_THRESHOLD=0.42
+      - MODEL_PATH=data/models/lightgbm_universal.pkl
+      - MODEL_TYPE=xgboost
+      - LEVERAGE=2.0
+      - SELL_ONLY=true
+      - PYTHONUNBUFFERED=1
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  avax-trader:
+    build: .
+    container_name: atr-trader-avax
+    restart: unless-stopped
+    volumes:
+      - ./logs:/app/logs
+      - .env:/app/.env
+      - ./data:/app/data
+    environment:
+      - PAPER_TRADING=true
+      - TRADING_SYMBOL=AVAX/USDT
+      - CANDLE_INTERVAL=1m
+      - INITIAL_CAPITAL=10000
+      - CONFIDENCE_THRESHOLD=0.42
+      - MODEL_PATH=data/models/lightgbm_universal.pkl
+      - MODEL_TYPE=xgboost
+      - LEVERAGE=2.0
+      - SELL_ONLY=true
       - PYTHONUNBUFFERED=1
     logging:
       driver: "json-file"
