@@ -24,7 +24,12 @@ class Pipeline:
     def __init__(self) -> None:
         self.settings = get_settings()
         self.bus = EventBus(maxsize=self.settings.queue_max_size)
-        self.state = StateManager(initial_capital=self.settings.initial_capital)
+        clean_symbol = self.settings.trading_symbol.replace("/", "_").replace(":", "_")
+        csv_path = f"data/trades_log_{clean_symbol}.csv"
+        self.state = StateManager(
+            initial_capital=self.settings.initial_capital,
+            csv_path=csv_path
+        )
         self._tasks: List[asyncio.Task] = []
         self._shutdown_event = asyncio.Event()
 

@@ -9,12 +9,11 @@ ZONE="asia-east1-a"
 INSTANCE_NAME="atr-trader-vm"
 LOCAL_CSV="data/trades_log.csv"
 
-echo "Fetching remote trades_log.csv from VM..."
-gcloud compute ssh $INSTANCE_NAME \
+echo "Fetching remote trades log files from VM..."
+gcloud compute scp "$INSTANCE_NAME:~/atr_trader/data/trades_log_*.csv" "data/" \
     --zone=$ZONE \
-    --project=$PROJECT_ID \
-    --command="cat ~/atr_trader/data/trades_log.csv" > "$LOCAL_CSV"
+    --project=$PROJECT_ID
 
 echo "Sync completed successfully!"
-echo "Local file updated: $LOCAL_CSV"
-echo "Total rows: $(wc -l < "$LOCAL_CSV" | tr -d ' ')"
+echo "Local files updated in data/:"
+ls -lh data/trades_log_*.csv
