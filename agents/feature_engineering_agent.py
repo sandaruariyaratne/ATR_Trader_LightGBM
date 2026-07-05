@@ -121,8 +121,7 @@ class FeatureEngineeringAgent:
         exclude_cols = (
             "timestamp", "label", "open", "high", "low", "close", "volume",
             "quote_volume", "taker_buy_base_volume", "taker_buy_quote_volume", "trades",
-            "taker_buy_ratio", "quote_vol_dominance", "avg_trade_size_change_5m",
-            "net_taker_flow_5m", "net_taker_flow_15m", "whale_buying_factor_5m"
+            "taker_buy_ratio", "quote_vol_dominance", "avg_trade_size_change_5m"
         )
         feature_cols = [c for c in df.columns if c not in exclude_cols]
         last_row = df.iloc[-1]
