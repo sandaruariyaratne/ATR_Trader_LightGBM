@@ -324,6 +324,7 @@ class StateManager:
         async with self._lock:
             self.circuit_breaker_active = True
             self.circuit_breaker_until = time.time() + cooldown_seconds
+            self.consecutive_losses = 0
             logger.warning(
                 "state.circuit_breaker_triggered",
                 cooldown_seconds=cooldown_seconds,
