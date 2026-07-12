@@ -59,12 +59,12 @@ def train_lightgbm(X_train, y_train):
     model = LGBMClassifier(
         class_weight="balanced",
         n_estimators=300,
-        num_leaves=31,
+        num_leaves=63,
         learning_rate=0.05,
         subsample=0.8,
         colsample_bytree=0.8,
         random_state=42,
-        n_jobs=-1,
+        n_jobs=2,
         verbose=-1,
     )
     model.fit(X_train, y_train)
@@ -76,14 +76,14 @@ def train_lightgbm(X_train, y_train):
 @click.command()
 @click.option("--csv", "csv_path", required=True, help="Path to OHLCV CSV")
 @click.option(
-    "--model", "model_type", default="xgboost",
+    "--model", "model_type", default="lightgbm",
     type=click.Choice(["xgboost", "lightgbm"]), show_default=True,
 )
 @click.option("--output-dir", default="data/models", show_default=True)
 @click.option("--threshold", default=0.60, show_default=True, type=float, help="Imbalance threshold (deprecated/ignored in TBM)")
 @click.option("--label-window", default=15, show_default=True, type=int, help="Time limit window in minutes for TBM barrier evaluation")
-@click.option("--tp-mult", default=2.0, show_default=True, type=float, help="ATR multiplier for Upper Profit Barrier (TP)")
-@click.option("--sl-mult", default=1.0, show_default=True, type=float, help="ATR multiplier for Lower Risk Barrier (SL)")
+@click.option("--tp-mult", default=4.0, show_default=True, type=float, help="ATR multiplier for Upper Profit Barrier (TP)")
+@click.option("--sl-mult", default=2.0, show_default=True, type=float, help="ATR multiplier for Lower Risk Barrier (SL)")
 @click.option("--fee-rate", default=0.0010, show_default=True, type=float, help="Round-trip commission fee rate (e.g. 0.0010 for 10 bps)")
 def main(
     csv_path: str,
@@ -128,7 +128,11 @@ def main(
         "candle_body_ratio", "upper_wick_ratio", "lower_wick_ratio",
         "extreme_ratio_1h", "extreme_ratio_4h",
         "volatility_1h", "volatility_4h", "volatility_ratio",
-        "tvi_5m", "tvi_15m", "tvi_1h"
+        "tvi_5m", "tvi_15m", "tvi_1h",
+        "taker_imbalance_1m", "taker_imbalance_5m", "taker_imbalance_15m", 
+        "taker_imbalance_60m", "taker_imbalance_240m",
+        "force_index_1m", "force_index_5m", "force_index_15m",
+        "volume_acc_15m"
     ]
     if any(col not in df.columns for col in required_cols):
         print("Required optimal features not found in CSV. Rebuilding on-the-fly...")
@@ -146,7 +150,11 @@ def main(
         "candle_body_ratio", "upper_wick_ratio", "lower_wick_ratio",
         "extreme_ratio_1h", "extreme_ratio_4h",
         "volatility_1h", "volatility_4h", "volatility_ratio",
-        "tvi_5m", "tvi_15m", "tvi_1h"
+        "tvi_5m", "tvi_15m", "tvi_1h",
+        "taker_imbalance_1m", "taker_imbalance_5m", "taker_imbalance_15m", 
+        "taker_imbalance_60m", "taker_imbalance_240m",
+        "force_index_1m", "force_index_5m", "force_index_15m",
+        "volume_acc_15m"
     ]
     # Filter only features present in df in case of data columns mismatch
     feature_cols = [c for c in feature_cols if c in df.columns]
