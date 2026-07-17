@@ -84,14 +84,17 @@ class ExecutionAgent:
 
     def _build_exchange(self):
         cls = getattr(ccxtpro, self.settings.exchange_id)
-        return cls(
+        exchange = cls(
             {
                 "apiKey": self.settings.exchange_api_key,
                 "secret": self.settings.exchange_api_secret,
                 "enableRateLimit": True,
-                "options": {"defaultType": "spot"},
+                "options": {"defaultType": "future"},
             }
         )
+        if self.settings.sandbox:
+            exchange.enableDemoTrading(True)
+        return exchange
 
     # ── Order listener ────────────────────────────────────────────────────────
 

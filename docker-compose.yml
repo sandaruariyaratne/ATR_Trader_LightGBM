@@ -1,114 +1,6 @@
 version: '3.8'
 
 services:
-  sol-trader:
-    build: .
-    container_name: atr-trader-sol
-    restart: unless-stopped
-    volumes:
-      - ./logs:/app/logs
-      - .env:/app/.env
-      - ./data:/app/data
-    environment:
-      - PAPER_TRADING=true
-      - TRADING_SYMBOL=SOL/USDT
-      - CANDLE_INTERVAL=1m
-      - INITIAL_CAPITAL=10000
-      - CONFIDENCE_THRESHOLD=0.42
-      - MODEL_PATH=data/models/lightgbm_universal.pkl
-      - MODEL_TYPE=xgboost
-      - LEVERAGE=2.0
-      - SELL_ONLY=true
-      - PYTHONUNBUFFERED=1
-      - STOP_LOSS_ATR_MULT=4.0
-      - TAKE_PROFIT_ATR_MULT=8.0
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "5"
-
-  btc-trader:
-    build: .
-    container_name: atr-trader-btc
-    restart: unless-stopped
-    volumes:
-      - ./logs:/app/logs
-      - .env:/app/.env
-      - ./data:/app/data
-    environment:
-      - PAPER_TRADING=true
-      - TRADING_SYMBOL=BTC/USDT
-      - CANDLE_INTERVAL=1m
-      - INITIAL_CAPITAL=10000
-      - CONFIDENCE_THRESHOLD=0.42
-      - MODEL_PATH=data/models/lightgbm_universal.pkl
-      - MODEL_TYPE=xgboost
-      - LEVERAGE=2.0
-      - SELL_ONLY=true
-      - PYTHONUNBUFFERED=1
-      - STOP_LOSS_ATR_MULT=2.5
-      - TAKE_PROFIT_ATR_MULT=4.0
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "5"
-
-  eth-trader:
-    build: .
-    container_name: atr-trader-eth
-    restart: unless-stopped
-    volumes:
-      - ./logs:/app/logs
-      - .env:/app/.env
-      - ./data:/app/data
-    environment:
-      - PAPER_TRADING=true
-      - TRADING_SYMBOL=ETH/USDT
-      - CANDLE_INTERVAL=1m
-      - INITIAL_CAPITAL=10000
-      - CONFIDENCE_THRESHOLD=0.42
-      - MODEL_PATH=data/models/lightgbm_universal.pkl
-      - MODEL_TYPE=xgboost
-      - LEVERAGE=2.0
-      - SELL_ONLY=true
-      - PYTHONUNBUFFERED=1
-      - STOP_LOSS_ATR_MULT=4.0
-      - TAKE_PROFIT_ATR_MULT=3.0
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "5"
-
-  bnb-trader:
-    build: .
-    container_name: atr-trader-bnb
-    restart: unless-stopped
-    volumes:
-      - ./logs:/app/logs
-      - .env:/app/.env
-      - ./data:/app/data
-    environment:
-      - PAPER_TRADING=true
-      - TRADING_SYMBOL=BNB/USDT
-      - CANDLE_INTERVAL=1m
-      - INITIAL_CAPITAL=10000
-      - CONFIDENCE_THRESHOLD=0.42
-      - MODEL_PATH=data/models/lightgbm_universal.pkl
-      - MODEL_TYPE=xgboost
-      - LEVERAGE=2.0
-      - SELL_ONLY=true
-      - PYTHONUNBUFFERED=1
-      - STOP_LOSS_ATR_MULT=4.0
-      - TAKE_PROFIT_ATR_MULT=6.0
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "5"
-
   avax-trader:
     build: .
     container_name: atr-trader-avax
@@ -118,15 +10,17 @@ services:
       - .env:/app/.env
       - ./data:/app/data
     environment:
-      - PAPER_TRADING=true
+      - PAPER_TRADING=false
+      - SANDBOX=true
       - TRADING_SYMBOL=AVAX/USDT
       - CANDLE_INTERVAL=1m
       - INITIAL_CAPITAL=10000
-      - CONFIDENCE_THRESHOLD=0.42
+      - CONFIDENCE_THRESHOLD_BUY=0.42
+      - CONFIDENCE_THRESHOLD_SELL=0.42
       - MODEL_PATH=data/models/lightgbm_universal.pkl
       - MODEL_TYPE=xgboost
       - LEVERAGE=2.0
-      - SELL_ONLY=true
+      - SELL_ONLY=false
       - PYTHONUNBUFFERED=1
       - STOP_LOSS_ATR_MULT=3.0
       - TAKE_PROFIT_ATR_MULT=2.0

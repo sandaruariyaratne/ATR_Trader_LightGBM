@@ -45,7 +45,10 @@ class Settings(BaseSettings):
     # ── Model ─────────────────────────────────────────────────────────────────
     model_type: Literal["xgboost", "onnx", "torch"] = Field(default="xgboost")
     model_path: Path = Field(default=Path("data/models/lightgbm_universal.pkl"))
-    confidence_threshold: float = Field(default=0.42, ge=0.4, le=1.0)  # Optimal confidence gate
+    confidence_threshold: float = Field(default=0.42, ge=0.4, le=1.0)  # Deprecated/general threshold
+    confidence_threshold_buy: float = Field(default=0.42, ge=0.4, le=1.0)  # Long threshold
+    confidence_threshold_sell: float = Field(default=0.42, ge=0.4, le=1.0) # Short threshold
+    sandbox: bool = Field(default=False, description="Enable CCXT sandbox/demo mode")
     feature_window: int = Field(default=50, ge=20)
 
     # ── Pipeline ──────────────────────────────────────────────────────────────

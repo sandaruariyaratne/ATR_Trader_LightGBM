@@ -62,14 +62,17 @@ class MarketDataAgent:
 
     def _build_exchange(self):
         exchange_class = getattr(ccxtpro, self.settings.exchange_id)
-        return exchange_class(
+        exchange = exchange_class(
             {
                 "apiKey": self.settings.exchange_api_key,
                 "secret": self.settings.exchange_api_secret,
                 "enableRateLimit": True,
-                "options": {"defaultType": "spot"},
+                "options": {"defaultType": "future"},
             }
         )
+        if self.settings.sandbox:
+            exchange.enableDemoTrading(True)
+        return exchange
 
     # ── Main loop ─────────────────────────────────────────────────────────────
 

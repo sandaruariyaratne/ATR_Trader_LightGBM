@@ -47,6 +47,19 @@ class RiskManagementAgent:
         # Cache latest market state for ATR / current price
         self._latest_market: Optional[MarketStateEvent] = None
 
+        self.exchange = None
+        if not settings.paper_trading:
+            import ccxt.async_support as ccxt
+            exchange_class = getattr(ccxt, settings.exchange_id)
+            self.exchange = exchange_class({
+                "apiKey": settings.exchange_api_key,
+                "secret": settings.exchange_api_secret,
+                "enableRateLimit": True,
+                "options": {"defaultType": "future"},
+            })
+            if settings.sandbox:
+                self.exchange.enableDemoTrading(True)
+
     # ── Main loop ─────────────────────────────────────────────────────────────
 
     async def run(self) -> None:
@@ -55,18 +68,24 @@ class RiskManagementAgent:
         # (We subscribe to a copy via a secondary consumer pattern)
         market_task = asyncio.create_task(self._market_state_listener())
 
-        while True:
-            try:
-                signal: TradeSignalEvent = await self.bus.consume("trade_signal")
-                order = await self._evaluate(signal)
-                if order is not None:
-                    await self.bus.publish("approved_order", order)
-            except asyncio.CancelledError:
-                market_task.cancel()
-                logger.info("risk_agent.cancelled")
-                raise
-            except Exception as exc:
-                logger.error("risk_agent.error", error=str(exc))
+        try:
+            while True:
+                try:
+                    signal: TradeSignalEvent = await self.bus.consume("trade_signal")
+                    order = await self._evaluate(signal)
+                    if order is not None:
+                        await self.bus.publish("approved_order", order)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    logger.error("risk_agent.error", error=str(exc))
+        except asyncio.CancelledError:
+            market_task.cancel()
+            logger.info("risk_agent.cancelled")
+            raise
+        finally:
+            if self.exchange:
+                await self.exchange.close()
 
     async def _market_state_listener(self) -> None:
         """Keep a local cache of the latest market state for ATR access."""
@@ -91,13 +110,29 @@ class RiskManagementAgent:
             return None
 
         # ── 2. Confidence gate ────────────────────────────────────────────────
-        if signal.confidence < self.settings.confidence_threshold:
+        threshold = (
+            self.settings.confidence_threshold_buy
+            if signal.action == "BUY"
+            else self.settings.confidence_threshold_sell
+        )
+        if signal.confidence < threshold:
             logger.debug(
                 "risk_agent.low_confidence_rejected",
                 confidence=signal.confidence,
-                threshold=self.settings.confidence_threshold,
+                action=signal.action,
+                threshold=threshold,
             )
             return None
+
+        # ── Sync Equity from Exchange (if live/demo) ──────────────────────────
+        if self.exchange:
+            try:
+                balance = await self.exchange.fetch_balance()
+                total_usdt = float(balance.get("total", {}).get("USDT", self.state.equity))
+                await self.state.update_equity(total_usdt)
+                logger.debug("risk_agent.balance_synced", balance=total_usdt)
+            except Exception as e:
+                logger.error("risk_agent.fetch_balance_failed", error=str(e))
 
         # ── 3. Circuit breaker ────────────────────────────────────────────────
         if await self.state.check_circuit_breaker():

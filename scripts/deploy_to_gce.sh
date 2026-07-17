@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-PROJECT_ID="atr-trader-lgbm-v1"
+PROJECT_ID="trader-42f"
 ZONE="asia-east1-a"
 INSTANCE_NAME="atr-trader-vm"
 
@@ -13,7 +13,7 @@ else
     gcloud compute instances create $INSTANCE_NAME \
         --project=$PROJECT_ID \
         --zone=$ZONE \
-        --machine-type=e2-small \
+        --machine-type=e2-medium \
         --image-family=ubuntu-2204-lts \
         --image-project=ubuntu-os-cloud \
         --boot-disk-size=25GB
@@ -37,8 +37,7 @@ echo "=== 2. Packaging project files ==="
 tar -czf atr_trader.tar.gz \
     --exclude='.venv' \
     --exclude='.git' \
-    --exclude='data/SOLUSDT.csv' \
-    --exclude='data/SOLUSDT_labeled.csv' \
+    --exclude='*.csv' \
     --exclude='atr_trader.tar.gz' \
     --exclude='algo_trader.tar.gz' \
     --exclude='logs/*.log' \

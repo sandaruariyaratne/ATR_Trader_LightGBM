@@ -203,70 +203,120 @@ class StateManager:
         """Initialize the CSV log file with headers if it doesn't exist."""
         if not self.csv_path:
             return
+        expected_headers = [
+            "Timestamp",
+            "Event",
+            "OrderID",
+            "Symbol",
+            "Side",
+            "Quantity",
+            "Price",
+            "PnL_USD",
+            "PnL_Pct",
+            "Opened_At",
+            "Closed_At",
+            "Exit_Reason",
+            "Total_Balance",
+            "Profit_Loss"
+        ]
         try:
             os.makedirs(os.path.dirname(self.csv_path), exist_ok=True)
-            if not os.path.exists(self.csv_path):
+            if not os.path.exists(self.csv_path) or os.path.getsize(self.csv_path) == 0:
                 with open(self.csv_path, mode="w", newline="") as f:
                     writer = csv.writer(f)
-                    writer.writerow([
-                        "Timestamp",
-                        "Event",
-                        "OrderID",
-                        "Symbol",
-                        "Side",
-                        "Quantity",
-                        "Price",
-                        "PnL_USD",
-                        "PnL_Pct",
-                        "Opened_At",
-                        "Closed_At",
-                        "Exit_Reason",
-                        "Total_Balance",
-                        "Profit_Loss"
-                    ])
-            else:
-                # Migrate existing file if the new column is missing
-                with open(self.csv_path, mode="r", newline="") as f:
-                    reader = list(csv.reader(f))
-                
-                if reader and len(reader) > 0:
-                    header = reader[0]
-                    if "Profit_Loss" not in header:
-                        new_rows = []
-                        # Add header
-                        header.append("Profit_Loss")
-                        new_rows.append(header)
-                        
-                        # Find indices
-                        event_idx = header.index("Event") if "Event" in header else 1
-                        pnl_idx = header.index("PnL_USD") if "PnL_USD" in header else 7
-                        
-                        # Add column to existing rows
-                        for row in reader[1:]:
-                            if len(row) < len(header) - 1:
-                                row.append("N/A")
-                            else:
+                    writer.writerow(expected_headers)
+                return
+
+            with open(self.csv_path, mode="r", newline="") as f:
+                rows = list(csv.reader(f))
+
+            if not rows:
+                with open(self.csv_path, mode="w", newline="") as f:
+                    writer = csv.writer(f)
+                    writer.writerow(expected_headers)
+                return
+
+            first_row = rows[0]
+            # Check if the first row contains "Timestamp" (case-insensitive check is safer)
+            has_header = any(h.strip().lower() == "timestamp" for h in first_row if h)
+
+            if not has_header:
+                # File has no headers at all! All rows are data rows.
+                new_rows = [expected_headers]
+                for row in rows:
+                    if not row or (len(row) == 1 and not row[0].strip()):
+                        continue
+                    # Pad rows that are shorter than the expected headers
+                    while len(row) < len(expected_headers):
+                        # If we are adding the last column (Profit_Loss), calculate it
+                        if len(row) == len(expected_headers) - 1:
+                            event = row[1] if len(row) > 1 else ""
+                            pnl_usd_str = row[7] if len(row) > 7 else ""
+                            if event == "EXIT":
                                 try:
-                                    event = row[event_idx]
-                                    if event == "EXIT":
-                                        pnl_val = float(row[pnl_idx])
-                                        if pnl_val > 0:
-                                            row.append("PROFIT")
-                                        elif pnl_val < 0:
-                                            row.append("LOSS")
-                                        else:
-                                            row.append("BREAKEVEN")
+                                    pnl_val = float(pnl_usd_str)
+                                    if pnl_val > 0:
+                                        row.append("PROFIT")
+                                    elif pnl_val < 0:
+                                        row.append("LOSS")
                                     else:
-                                        row.append("N/A")
+                                        row.append("BREAKEVEN")
                                 except Exception:
                                     row.append("N/A")
-                            new_rows.append(row)
-                        
-                        # Write migrated rows back
-                        with open(self.csv_path, mode="w", newline="") as f:
-                            writer = csv.writer(f)
-                            writer.writerows(new_rows)
-                        logger.info("state.csv_migrated_successfully", path=self.csv_path)
+                            else:
+                                row.append("N/A")
+                        else:
+                            row.append("")
+                    new_rows.append(row[:len(expected_headers)])
+
+                with open(self.csv_path, mode="w", newline="") as f:
+                    writer = csv.writer(f)
+                    writer.writerows(new_rows)
+                logger.info("state.csv_header_added", path=self.csv_path)
+            else:
+                # File has headers. Check if "Profit_Loss" column is missing.
+                if not any(h.strip().lower() == "profit_loss" for h in first_row if h):
+                    new_rows = []
+                    # Update header row
+                    first_row.append("Profit_Loss")
+                    new_rows.append(first_row)
+
+                    event_idx = -1
+                    pnl_idx = -1
+                    for idx, h in enumerate(first_row[:-1]):
+                        if h.strip().lower() == "event":
+                            event_idx = idx
+                        elif h.strip().lower() == "pnl_usd":
+                            pnl_idx = idx
+
+                    for row in rows[1:]:
+                        if not row or (len(row) == 1 and not row[0].strip()):
+                            continue
+                        if len(row) < len(first_row) - 1:
+                            while len(row) < len(first_row) - 1:
+                                row.append("")
+                            row.append("N/A")
+                        else:
+                            try:
+                                event = row[event_idx] if event_idx != -1 and len(row) > event_idx else ""
+                                if event == "EXIT":
+                                    pnl_val = float(row[pnl_idx]) if pnl_idx != -1 and len(row) > pnl_idx else 0.0
+                                    if pnl_val > 0:
+                                        row.append("PROFIT")
+                                    elif pnl_val < 0:
+                                        row.append("LOSS")
+                                    else:
+                                        row.append("BREAKEVEN")
+                                else:
+                                    row.append("N/A")
+                            except Exception:
+                                row.append("N/A")
+                        new_rows.append(row[:len(first_row)])
+
+                    with open(self.csv_path, mode="w", newline="") as f:
+                        writer = csv.writer(f)
+                        writer.writerows(new_rows)
+                    logger.info("state.csv_migrated_successfully", path=self.csv_path)
         except Exception as e:
             logger.error("state.csv_init_failed", error=str(e))
 

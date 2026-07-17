@@ -4,7 +4,7 @@
 # Syncs the remote trades log from the GCP VM to your local machine.
 set -e
 
-PROJECT_ID="atr-trader-lgbm-v1"
+PROJECT_ID="trader-42f"
 ZONE="asia-east1-a"
 INSTANCE_NAME="atr-trader-vm"
 LOCAL_CSV="data/trades_log.csv"

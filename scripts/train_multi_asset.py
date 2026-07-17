@@ -17,6 +17,11 @@ Usage:
 """
 from __future__ import annotations
 
+import os
+import sys
+# Add project root to path for local imports
+sys.path.append(os.getcwd())
+
 import pickle
 import time
 from pathlib import Path
@@ -53,6 +58,9 @@ FEATURE_COLS = [
     "taker_imbalance_60m", "taker_imbalance_240m",
     "force_index_1m", "force_index_5m", "force_index_15m",
     "volume_acc_15m",
+    "btc_log_return_5m", "btc_log_return_1h", "asset_btc_correlation_1h",
+    "distance_to_daily_200ema",
+    "funding_rate", "funding_rate_velocity",
 ]
 
 COL_NAMES = [
@@ -65,7 +73,7 @@ TBM_MAP = {2: "BUY", 0: "SELL", 1: "HOLD"}
 
 # ─── Per-Asset Processing ─────────────────────────────────────────────────────
 
-def process_asset(symbol: str, csv_path: str, tp_mult: float, sl_mult: float, fee_rate: float, start_timestamp: int = 1640995200) -> pd.DataFrame:
+def process_asset(symbol: str, csv_path: str, tp_mult: float, sl_mult: float, fee_rate: float, start_timestamp: int = 1629000000) -> pd.DataFrame:
     """
     Load raw OHLCV, compute features, compute labels — all within this asset's
     own time series. Returns a clean DataFrame of (features + label) rows.
@@ -85,15 +93,67 @@ def process_asset(symbol: str, csv_path: str, tp_mult: float, sl_mult: float, fe
     df = df[df["volume"] > 0].reset_index(drop=True)
     print(f"[{symbol}] After zero-volume filter: {len(df):,} rows", flush=True)
 
-    # Keep only rows onward from January 1, 2022 (timestamp >= 1640995200)
+    # Keep only rows onward from August 15, 2021 (timestamp >= 1629000000)
     df = df[df["timestamp"] >= start_timestamp].reset_index(drop=True)
-    print(f"[{symbol}] Filtered to onward {start_timestamp} (Jan 2022): {len(df):,} rows", flush=True)
+    print(f"[{symbol}] Filtered to onward {start_timestamp} (Aug 2021): {len(df):,} rows", flush=True)
 
     # Feature engineering (within this asset's time series only)
     t1 = time.time()
     print(f"[{symbol}] Computing features ...", flush=True)
     df = build_stationary_features(df)
-    print(f"[{symbol}] Features computed in {time.time()-t1:.1f}s", flush=True)
+    
+    # Load BTC for Category A features alignment
+    print(f"[{symbol}] Aligning with BTCUSDT for Category A features ...", flush=True)
+    df_btc = pd.read_csv("data/BTCUSDT.csv", sep="|", header=None, names=COL_NAMES, dtype={
+        "timestamp": "int64", "open": "float64", "high": "float64",
+        "low": "float64", "close": "float64", "volume": "float64",
+        "taker_buy_quote_volume": "float64", "taker_buy_base_volume": "float64",
+        "quote_volume": "float64", "trades": "float64"
+    })
+    df_btc = df_btc[df_btc["volume"] > 0].reset_index(drop=True)
+    
+    # Merge BTC close
+    df = pd.merge(df, df_btc[["timestamp", "close"]], on="timestamp", how="left", suffixes=("", "_btc"))
+    df["close_btc"] = df["close_btc"].ffill().bfill()
+    
+    # Calculate returns and correlation
+    df["btc_log_return_5m"] = np.log(df["close_btc"] / df["close_btc"].shift(5))
+    df["btc_log_return_1h"] = np.log(df["close_btc"] / df["close_btc"].shift(60))
+    df["log_ret_1m"] = np.log(df["close"] / df["close"].shift(1))
+    df["btc_log_ret_1m"] = np.log(df["close_btc"] / df["close_btc"].shift(1))
+    df["asset_btc_correlation_1h"] = df["log_ret_1m"].rolling(60).corr(df["btc_log_ret_1m"]).fillna(1.0)
+    
+    # Daily 200 EMA distance
+    df["date"] = pd.to_datetime(df["timestamp"], unit="s").dt.date
+    daily_close = df.groupby("date")["close"].last().reset_index()
+    daily_close["daily_200ema"] = daily_close["close"].ewm(span=200, adjust=False).mean()
+    df = pd.merge(df, daily_close[["date", "daily_200ema"]], on="date", how="left")
+    df["distance_to_daily_200ema"] = (df["close"] - df["daily_200ema"]) / df["daily_200ema"]
+    
+    # Cleanup temporary columns
+    df.drop(columns=["close_btc", "log_ret_1m", "btc_log_ret_1m", "date", "daily_200ema"], inplace=True)
+    
+    # Load Funding Rates for Category B features
+    print(f"[{symbol}] Loading historical funding rates ...", flush=True)
+    try:
+        df_funding = pd.read_csv("data/futures_funding_rates.csv")
+        df_funding = df_funding[df_funding["symbol"] == symbol].copy()
+        
+        # Merge funding rates
+        if len(df_funding) > 0:
+            df = pd.merge(df, df_funding[["timestamp", "funding_rate"]], on="timestamp", how="left")
+            df["funding_rate"] = df["funding_rate"].ffill().bfill()
+        else:
+            df["funding_rate"] = 0.0
+    except Exception as e:
+        print(f"[{symbol}] Error loading funding rates: {e}. Defaulting to 0.0.")
+        df["funding_rate"] = 0.0
+        
+    # Calculate funding rate velocity (diff from 8 hours ago, which is 480 minutes)
+    df["funding_rate_velocity"] = df["funding_rate"] - df["funding_rate"].shift(480)
+    df["funding_rate_velocity"] = df["funding_rate_velocity"].fillna(0.0)
+    
+    print(f"[{symbol}] Features, Category A, and Category B features computed in {time.time()-t1:.1f}s", flush=True)
 
     # Label generation with Triple Barrier Method (lookforward within this asset only)
     t2 = time.time()
@@ -155,7 +215,7 @@ def train_lightgbm(X_train, y_train):
 @click.option("--fee-rate", default=0.0002, show_default=True, type=float, help="Round-trip commission fee rate")
 @click.option("--output-dir", default="data/models", show_default=True)
 @click.option("--output-name", default="lightgbm_universal.pkl", show_default=True)
-@click.option("--start-timestamp", default=1640995200, show_default=True, type=int, help="Timestamp threshold to filter onwards (default: Jan 1, 2022)")
+@click.option("--start-timestamp", default=1629000000, show_default=True, type=int, help="Timestamp threshold to filter onwards (default: Aug 15, 2021)")
 def main(tp_mult: float, sl_mult: float, fee_rate: float, output_dir: str, output_name: str, start_timestamp: int) -> None:
     total_start = time.time()
     print("=" * 60)
@@ -194,7 +254,7 @@ def main(tp_mult: float, sl_mult: float, fee_rate: float, output_dir: str, outpu
     y = le.fit_transform(combined["label"])
     label_map = {i: label for i, label in enumerate(le.classes_)}
 
-    print(f"Label distribution: {dict(zip(le.classes_, np.bincount(y)))}", flush=True)
+    print(f"Label distribution: {pd.Series(combined['label']).value_counts().to_dict()}", flush=True)
 
     split_idx = int(len(X) * 0.8)
     X_train, X_test = X[:split_idx], X[split_idx:]
