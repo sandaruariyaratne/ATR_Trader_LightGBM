@@ -392,7 +392,7 @@ class ExecutionAgent:
                         await self._close_position(pos, order_id, current_price, "timeout")
                         continue
 
-                    # Check if Take Profit has been filled
+                    # Check if Take Profit has been filled (standard limit order works perfectly)
                     tp_filled = False
                     tp_price = pos.take_profit
                     if pos.tp_order_id:
@@ -408,20 +408,11 @@ class ExecutionAgent:
                         await self._close_position(pos, order_id, tp_price, "tp")
                         continue
 
-                    # Check if Stop Loss has been filled
-                    sl_filled = False
-                    sl_price = pos.stop_loss
-                    if pos.sl_order_id:
-                        try:
-                            sl_status = await self._exchange.fetch_order(pos.sl_order_id, pos.symbol)
-                            if sl_status.get("status") == "closed":
-                                sl_filled = True
-                                sl_price = float(sl_status.get("average", pos.stop_loss) or sl_status.get("price", pos.stop_loss) or pos.stop_loss)
-                        except Exception as e:
-                            logger.warning("execution_agent.fetch_sl_failed", order_id=pos.sl_order_id, error=str(e))
-
-                    if sl_filled:
-                        await self._close_position(pos, order_id, sl_price, "sl")
+                    # For Stop Loss, use hybrid price checking to avoid Binance Testnet Algo order fetch bugs.
+                    # The exchange will execute the STOP_MARKET order itself if hit.
+                    exit_reason = self._check_exit(pos, current_price)
+                    if exit_reason == "sl":
+                        await self._close_position(pos, order_id, pos.stop_loss, "sl")
                         continue
 
     def _check_exit(self, pos: Position, price: float) -> Optional[str]:
@@ -452,21 +443,12 @@ class ExecutionAgent:
         if not self.settings.paper_trading:
             assert self._exchange is not None
             
-            # Cancel TP order if reason is SL or timeout
-            if reason in ("sl", "timeout") and pos.tp_order_id:
-                try:
-                    logger.info("execution_agent.cancelling_resting_tp", order_id=pos.tp_order_id)
-                    await self._exchange.cancel_order(pos.tp_order_id, pos.symbol)
-                except Exception as exc:
-                    logger.warning("execution_agent.cancel_tp_failed", error=str(exc))
-
-            # Cancel SL order if reason is TP or timeout
-            if reason in ("tp", "timeout") and pos.sl_order_id:
-                try:
-                    logger.info("execution_agent.cancelling_resting_sl", order_id=pos.sl_order_id)
-                    await self._exchange.cancel_order(pos.sl_order_id, pos.symbol)
-                except Exception as exc:
-                    logger.warning("execution_agent.cancel_sl_failed", error=str(exc))
+            # Cancel all active resting orders (TP & SL) for this symbol on the exchange to prevent orphans
+            try:
+                logger.info("execution_agent.cancelling_all_resting_orders", symbol=pos.symbol)
+                await self._exchange.cancel_all_orders(pos.symbol)
+            except Exception as exc:
+                logger.warning("execution_agent.cancel_all_orders_failed", error=str(exc))
 
             # Only place a market exit order if it's a timeout exit
             if reason == "timeout":
