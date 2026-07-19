@@ -148,6 +148,45 @@ class StateManager:
                 entry=position.entry_price,
             )
 
+    async def log_cancelled_entry(
+        self,
+        order_id: str,
+        symbol: str,
+        side: str,
+        qty: float,
+        price: float,
+        opened_at: int,
+        confidence: float,
+        reason: str = "unfilled_timeout"
+    ) -> None:
+        async with self._lock:
+            closed_time_ms = int(time.time() * 1000)
+            self._write_csv_row(
+                event="CANCELLED",
+                order_id=order_id,
+                symbol=symbol,
+                side=side.upper(),
+                qty=qty,
+                price=price,
+                pnl_usd=0.0,
+                pnl_pct=0.0,
+                opened_at=datetime.fromtimestamp(opened_at / 1000).isoformat(),
+                closed_at=datetime.fromtimestamp(closed_time_ms / 1000).isoformat(),
+                exit_reason=reason,
+                commission=0.0,
+                confidence=confidence,
+                pnl_minus_comm=0.0,
+            )
+            logger.info(
+                "state.entry_cancelled",
+                order_id=order_id,
+                symbol=symbol,
+                side=side,
+                qty=qty,
+                price=price,
+                reason=reason,
+            )
+
     async def close_position(
         self,
         order_id: str,

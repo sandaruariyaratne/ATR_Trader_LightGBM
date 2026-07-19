@@ -261,6 +261,16 @@ class ExecutionAgent:
 
             if filled_qty <= 0.0:
                 logger.info("execution_agent.limit_order_unfilled", order_id=order_id)
+                await self.state.log_cancelled_entry(
+                    order_id=order_id,
+                    symbol=order.symbol,
+                    side=order.side,
+                    qty=order.quantity,
+                    price=price if price is not None else order.entry_price,
+                    opened_at=order.timestamp,
+                    confidence=order.confidence,
+                    reason="unfilled_timeout"
+                )
                 return OrderResultEvent(
                     symbol=order.symbol,
                     timestamp=int(time.time() * 1000),
