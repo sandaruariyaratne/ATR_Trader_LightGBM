@@ -129,8 +129,18 @@ class RiskManagementAgent:
             try:
                 balance = await self.exchange.fetch_balance()
                 total_usdt = float(balance.get("total", {}).get("USDT", self.state.equity))
+                # On first sync, also reset peak_equity & initial_capital so
+                # drawdown is measured from the actual demo account balance,
+                # not from the placeholder INITIAL_CAPITAL config value.
+                async with self.state._lock:
+                    if self.state.total_trades == 0 and self.state.peak_equity == self.state.initial_capital:
+                        self.state.initial_capital = total_usdt
+                        self.state.peak_equity = total_usdt
+                        logger.info("risk_agent.initial_capital_synced", balance=total_usdt)
                 await self.state.update_equity(total_usdt)
                 logger.debug("risk_agent.balance_synced", balance=total_usdt)
+            except Exception as e:
+                logger.error("risk_agent.fetch_balance_failed", error=str(e))
             except Exception as e:
                 logger.error("risk_agent.fetch_balance_failed", error=str(e))
 
@@ -192,12 +202,13 @@ class RiskManagementAgent:
             symbol=signal.symbol,
             timestamp=signal.timestamp,
             side=side,
-            order_type="market",
+            order_type=self.settings.order_type,
             quantity=quantity,
             entry_price=entry_price,
             stop_loss=stop_loss,
             take_profit=take_profit,
             rationale=f"model={signal.model_version}, conf={signal.confidence:.2f}",
+            confidence=signal.confidence,
         )
 
     def _estimate_entry_price(self, signal: TradeSignalEvent) -> float:

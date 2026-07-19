@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     trading_symbol: str = Field(default="SOL/USDT")
     candle_interval: str = Field(default="1m")
     paper_trading: bool = Field(default=True, description="Disable real orders when True")
+    order_type: Literal["market", "limit"] = Field(default="market", description="Order type for entries")
     fee_rate: float = Field(default=0.0002, description="Round-trip commission fee rate (e.g. 0.0002 for 2 bps VIP maker fee)")
 
     # ── Capital & Risk ────────────────────────────────────────────────────────

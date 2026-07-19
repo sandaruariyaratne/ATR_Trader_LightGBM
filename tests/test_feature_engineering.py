@@ -118,7 +118,7 @@ def _make_market_event(close: float = 100.0, n_candles: int = 55) -> MarketState
         "momentum":     momentum(closes),
     }
     candles = [
-        [i * 60000, highs[i] - 0.1, highs[i], lows[i], closes[i], vols[i]]
+        [i * 60000, highs[i] - 0.1, highs[i], lows[i], closes[i], vols[i], 100.0, 10.0, 200.0, 15]
         for i in range(n_candles)
     ]
     return MarketStateEvent(
@@ -147,6 +147,7 @@ class TestFeatureEngineeringAgent:
         bus.consume = AsyncMock()
         bus.publish = AsyncMock()
         state = MagicMock()
+        state.update_market_feed = AsyncMock()
         settings = Settings(feature_window=20)
         return FeatureEngineeringAgent(bus, state, settings)
 
@@ -160,7 +161,7 @@ class TestFeatureEngineeringAgent:
 
     async def test_emits_after_warmup(self):
         agent = self._build_agent()
-        event = _make_market_event(n_candles=55)
+        event = _make_market_event(n_candles=250)
         result = None
         for _ in range(15):   # feed enough events to warm up
             result = await agent._process(event)
@@ -168,7 +169,7 @@ class TestFeatureEngineeringAgent:
 
     async def test_feature_names_match_features_length(self):
         agent = self._build_agent()
-        event = _make_market_event(n_candles=55)
+        event = _make_market_event(n_candles=250)
         result = None
         for _ in range(15):
             result = await agent._process(event)
@@ -177,7 +178,7 @@ class TestFeatureEngineeringAgent:
 
     async def test_regime_is_valid_string(self):
         agent = self._build_agent()
-        event = _make_market_event(n_candles=55)
+        event = _make_market_event(n_candles=250)
         result = None
         for _ in range(15):
             result = await agent._process(event)
@@ -186,10 +187,10 @@ class TestFeatureEngineeringAgent:
 
     async def test_lagged_features_included(self):
         agent = self._build_agent()
-        event = _make_market_event(n_candles=55)
+        event = _make_market_event(n_candles=250)
         result = None
         for _ in range(15):
             result = await agent._process(event)
         assert result is not None
-        lag_names = [n for n in result.feature_names if "lag" in n]
-        assert len(lag_names) > 0, "Expected lagged feature names"
+        dev_names = [n for n in result.feature_names if "dev" in n]
+        assert len(dev_names) > 0, "Expected dev feature names"

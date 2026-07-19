@@ -28,7 +28,8 @@ class Pipeline:
         csv_path = f"data/trades_log_{clean_symbol}_42F.csv"
         self.state = StateManager(
             initial_capital=self.settings.initial_capital,
-            csv_path=csv_path
+            csv_path=csv_path,
+            fee_rate=self.settings.fee_rate
         )
         self._tasks: List[asyncio.Task] = []
         self._shutdown_event = asyncio.Event()

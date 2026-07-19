@@ -32,12 +32,13 @@ async def test_close_position_calculates_fees():
     await state.add_position(pos)
     
     # Act: close at 98.0 (TP)
-    # Expected fee = (100.0 + 98.0) * 10.0 * 0.0005 = 0.99 USD
+    # Expected entry fee = 100.0 * 10.0 * 0.0002 = 0.20 USD
+    # Expected exit fee (TP Limit) = 98.0 * 10.0 * 0.0002 = 0.196 USD
     # Expected raw PnL = (100.0 - 98.0) * 10.0 = 20.0 USD
-    # Net PnL = 20.0 - 0.99 = 19.01 USD
+    # Net PnL = 20.0 - 0.396 = 19.604 USD
     await exec_agent._close_position(pos, "TEST-FEE", 98.0, "tp")
     
     # Assert
-    assert abs(state.equity - 10019.01) < 1e-6
+    assert abs(state.equity - 10019.604) < 1e-6
     record = state.trade_history[-1]
-    assert abs(record.pnl - 19.01) < 1e-6
+    assert abs(record.pnl - 19.604) < 1e-6

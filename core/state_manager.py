@@ -32,6 +32,9 @@ class Position:
     take_profit: float
     opened_at: int          # unix ms
     order_id: str
+    confidence: float = 0.0
+    tp_order_id: Optional[str] = None
+    sl_order_id: Optional[str] = None
 
 
 @dataclass
@@ -50,13 +53,14 @@ class TradeRecord:
 class StateManager:
     """Central mutable state container for the trading system."""
 
-    def __init__(self, initial_capital: float, csv_path: Optional[str] = None) -> None:
+    def __init__(self, initial_capital: float, csv_path: Optional[str] = None, fee_rate: float = 0.0002) -> None:
         self._lock = asyncio.Lock()
 
         # ── Capital ───────────────────────────────────────────────────────────
         self.initial_capital: float = initial_capital
         self.equity: float = initial_capital
         self.peak_equity: float = initial_capital
+        self.fee_rate: float = fee_rate
 
         # ── Positions ─────────────────────────────────────────────────────────
         self.open_positions: Dict[str, Position] = {}   # order_id -> Position
@@ -117,6 +121,8 @@ class StateManager:
     async def add_position(self, position: Position) -> None:
         async with self._lock:
             self.open_positions[position.order_id] = position
+            commission = position.entry_price * position.quantity * 0.0002
+            pnl_minus_comm = 0.0 - commission
             self._write_csv_row(
                 event="ENTRY",
                 order_id=position.order_id,
@@ -129,6 +135,9 @@ class StateManager:
                 opened_at=datetime.fromtimestamp(position.opened_at / 1000).isoformat(),
                 closed_at="",
                 exit_reason="",
+                commission=commission,
+                confidence=position.confidence,
+                pnl_minus_comm=pnl_minus_comm,
             )
             logger.info(
                 "state.position_opened",
@@ -175,7 +184,14 @@ class StateManager:
 
             self.equity += pnl
 
-            pnl_pct = (pnl / (pos.entry_price * pos.quantity)) * 100 if (pos.entry_price * pos.quantity) != 0 else 0.0
+            if pos.side == "long":
+                gross_pnl = (exit_price - pos.entry_price) * pos.quantity
+            else:
+                gross_pnl = (pos.entry_price - exit_price) * pos.quantity
+
+            pnl_pct = (gross_pnl / (pos.entry_price * pos.quantity)) * 100 if (pos.entry_price * pos.quantity) != 0 else 0.0
+            commission = exit_price * pos.quantity * 0.0004
+            pnl_minus_comm = gross_pnl - commission
             self._write_csv_row(
                 event="EXIT",
                 order_id=order_id,
@@ -183,11 +199,14 @@ class StateManager:
                 side="SELL" if pos.side == "long" else "BUY",
                 qty=pos.quantity,
                 price=exit_price,
-                pnl_usd=pnl,
+                pnl_usd=gross_pnl,
                 pnl_pct=pnl_pct,
                 opened_at=datetime.fromtimestamp(pos.opened_at / 1000).isoformat(),
                 closed_at=datetime.fromtimestamp(closed_time_ms / 1000).isoformat(),
                 exit_reason=exit_reason,
+                commission=commission,
+                confidence=pos.confidence,
+                pnl_minus_comm=pnl_minus_comm,
             )
 
             logger.info(
@@ -217,7 +236,10 @@ class StateManager:
             "Closed_At",
             "Exit_Reason",
             "Total_Balance",
-            "Profit_Loss"
+            "Profit_Loss",
+            "Commission",
+            "Confidence",
+            "PnL_USD_Minus_Commission"
         ]
         try:
             os.makedirs(os.path.dirname(self.csv_path), exist_ok=True)
@@ -248,8 +270,8 @@ class StateManager:
                         continue
                     # Pad rows that are shorter than the expected headers
                     while len(row) < len(expected_headers):
-                        # If we are adding the last column (Profit_Loss), calculate it
-                        if len(row) == len(expected_headers) - 1:
+                        current_len = len(row)
+                        if current_len == 13: # Profit_Loss index
                             event = row[1] if len(row) > 1 else ""
                             pnl_usd_str = row[7] if len(row) > 7 else ""
                             if event == "EXIT":
@@ -265,6 +287,25 @@ class StateManager:
                                     row.append("N/A")
                             else:
                                 row.append("N/A")
+                        elif current_len == 14: # Commission index
+                            try:
+                                qty = float(row[5])
+                                price = float(row[6])
+                                event = row[1] if len(row) > 1 else ""
+                                rate = 0.0002 if event == "ENTRY" else 0.0004
+                                comm_val = price * qty * rate
+                                row.append(str(round(comm_val, 6)))
+                            except Exception:
+                                row.append("0.0")
+                        elif current_len == 15: # Confidence index
+                            row.append("0.0")
+                        elif current_len == 16: # PnL_USD_Minus_Commission index
+                            try:
+                                pnl_usd = float(row[7])
+                                commission = float(row[14])
+                                row.append(str(round(pnl_usd - commission, 6)))
+                            except Exception:
+                                row.append("0.0")
                         else:
                             row.append("")
                     new_rows.append(row[:len(expected_headers)])
@@ -274,29 +315,51 @@ class StateManager:
                     writer.writerows(new_rows)
                 logger.info("state.csv_header_added", path=self.csv_path)
             else:
-                # File has headers. Check if "Profit_Loss" column is missing.
-                if not any(h.strip().lower() == "profit_loss" for h in first_row if h):
+                # File has headers. Check if any expected headers are missing.
+                header_lower = [h.strip().lower() for h in first_row]
+                missing_profit_loss = "profit_loss" not in header_lower
+                missing_commission = "commission" not in header_lower
+                missing_confidence = "confidence" not in header_lower
+                missing_pnl_minus_comm = "pnl_usd_minus_commission" not in header_lower
+
+                if missing_profit_loss or missing_commission or missing_confidence or missing_pnl_minus_comm:
                     new_rows = []
-                    # Update header row
-                    first_row.append("Profit_Loss")
-                    new_rows.append(first_row)
+                    # Create new headers
+                    updated_headers = list(first_row)
+                    if missing_profit_loss:
+                        updated_headers.append("Profit_Loss")
+                    if missing_commission:
+                        updated_headers.append("Commission")
+                    if missing_confidence:
+                        updated_headers.append("Confidence")
+                    if missing_pnl_minus_comm:
+                        updated_headers.append("PnL_USD_Minus_Commission")
+                    new_rows.append(updated_headers)
 
                     event_idx = -1
                     pnl_idx = -1
-                    for idx, h in enumerate(first_row[:-1]):
-                        if h.strip().lower() == "event":
+                    qty_idx = -1
+                    price_idx = -1
+                    for idx, h in enumerate(first_row):
+                        h_clean = h.strip().lower()
+                        if h_clean == "event":
                             event_idx = idx
-                        elif h.strip().lower() == "pnl_usd":
+                        elif h_clean == "pnl_usd":
                             pnl_idx = idx
+                        elif h_clean == "quantity":
+                            qty_idx = idx
+                        elif h_clean == "price":
+                            price_idx = idx
 
                     for row in rows[1:]:
                         if not row or (len(row) == 1 and not row[0].strip()):
                             continue
-                        if len(row) < len(first_row) - 1:
-                            while len(row) < len(first_row) - 1:
-                                row.append("")
-                            row.append("N/A")
-                        else:
+                        
+                        # Pad the row if it's shorter than the original headers
+                        while len(row) < len(first_row):
+                            row.append("")
+
+                        if missing_profit_loss:
                             try:
                                 event = row[event_idx] if event_idx != -1 and len(row) > event_idx else ""
                                 if event == "EXIT":
@@ -311,7 +374,30 @@ class StateManager:
                                     row.append("N/A")
                             except Exception:
                                 row.append("N/A")
-                        new_rows.append(row[:len(first_row)])
+
+                        if missing_commission:
+                            try:
+                                qty = float(row[qty_idx]) if qty_idx != -1 and len(row) > qty_idx else 0.0
+                                price = float(row[price_idx]) if price_idx != -1 and len(row) > price_idx else 0.0
+                                event = row[event_idx] if event_idx != -1 and len(row) > event_idx else ""
+                                rate = 0.0002 if event == "ENTRY" else 0.0004
+                                comm_val = price * qty * rate
+                                row.append(str(round(comm_val, 6)))
+                            except Exception:
+                                row.append("0.0")
+
+                        if missing_confidence:
+                            row.append("0.0")
+
+                        if missing_pnl_minus_comm:
+                            try:
+                                pnl_val = float(row[updated_headers.index("PnL_USD")])
+                                comm_val = float(row[updated_headers.index("Commission")])
+                                row.append(str(round(pnl_val - comm_val, 6)))
+                            except Exception:
+                                row.append("0.0")
+
+                        new_rows.append(row[:len(updated_headers)])
 
                     with open(self.csv_path, mode="w", newline="") as f:
                         writer = csv.writer(f)
@@ -333,6 +419,9 @@ class StateManager:
         opened_at: str,
         closed_at: str,
         exit_reason: str,
+        commission: float,
+        confidence: float,
+        pnl_minus_comm: float,
     ) -> None:
         if not self.csv_path:
             return
@@ -364,6 +453,9 @@ class StateManager:
                     exit_reason,
                     round(self.equity, 2),
                     profit_loss,
+                    round(commission, 6),
+                    round(confidence, 4),
+                    round(pnl_minus_comm, 6),
                 ])
         except Exception as e:
             logger.error("state.csv_write_failed", error=str(e))

@@ -27,6 +27,8 @@ def _make_settings(**overrides) -> Settings:
         model_type="xgboost",
         model_path=Path("data/models/test.pkl"),
         confidence_threshold=0.50,
+        confidence_threshold_buy=0.50,
+        confidence_threshold_sell=0.50,
         initial_capital=10_000.0,
         max_position_pct=0.10,
         max_drawdown_pct=0.50,
@@ -34,6 +36,7 @@ def _make_settings(**overrides) -> Settings:
         take_profit_atr_mult=3.0,
         max_open_positions=1,
         paper_trading=True,
+        sell_only=False,
         feature_window=20,
         candle_buffer_size=60,
         queue_max_size=100,
@@ -82,8 +85,8 @@ def _make_market_state_event(idx: int = 1) -> MarketStateEvent:
         "momentum": 0.003,
     }
     candles = [
-        [i * 60000, close - 5, close + 5, close - 10, close + i, 1000.0]
-        for i in range(60)
+        [i * 60000, close - 5, close + 5, close - 10, close + i, 1000.0, 100.0, 10.0, 200.0, 15]
+        for i in range(250)
     ]
     return MarketStateEvent(
         symbol="BTC/USDT",

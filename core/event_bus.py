@@ -75,6 +75,7 @@ class ApprovedOrderEvent:
     stop_loss: float
     take_profit: float
     rationale: str
+    confidence: float = 0.0
 
 
 @dataclass

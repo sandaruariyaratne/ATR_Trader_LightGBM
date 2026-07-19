@@ -68,6 +68,16 @@ class ExecutionAgent:
             except Exception as exc:
                 logger.warning("execution_agent.set_leverage_failed", error=str(exc))
 
+            try:
+                balance_resp = await self._exchange.fetch_balance()
+                usdt_balance = float(balance_resp.get("USDT", {}).get("total", self.state.equity))
+                if usdt_balance > 0.0:
+                    async with self.state._lock:
+                        self.state.equity = usdt_balance
+                    logger.info("execution_agent.balance_synced", balance=usdt_balance)
+            except Exception as bal_exc:
+                logger.error("execution_agent.sync_balance_failed", error=str(bal_exc))
+
         order_listener = asyncio.create_task(self._order_listener())
         position_monitor = asyncio.create_task(self._position_monitor())
 
@@ -130,6 +140,7 @@ class ExecutionAgent:
             take_profit=order.take_profit,
             opened_at=order.timestamp,
             order_id=order_id,
+            confidence=order.confidence,
         )
         await self.state.add_position(position)
 
@@ -159,15 +170,107 @@ class ExecutionAgent:
         assert self._exchange is not None
         order_id = "UNKNOWN"
         try:
-            response = await self._exchange.create_order(
-                symbol=order.symbol,
-                type=order.order_type,
-                side=order.side,
-                amount=order.quantity,
-            )
+            is_limit = order.order_type == "limit"
+            params = {}
+            price = None
+            if is_limit:
+                params["postOnly"] = True
+                price = order.entry_price
+
+            response = None
+            try:
+                response = await self._exchange.create_order(
+                    symbol=order.symbol,
+                    type=order.order_type,
+                    side=order.side,
+                    amount=order.quantity,
+                    price=price,
+                    params=params,
+                )
+            except Exception as e:
+                # Check for Binance Post-Only rejection code or message
+                err_str = str(e)
+                if "-5022" in err_str or "executed as maker" in err_str or "Post Only" in err_str:
+                    logger.warning(
+                        "execution_agent.post_only_rejected_retrying",
+                        symbol=order.symbol,
+                        side=order.side,
+                        price=price,
+                        error=err_str,
+                    )
+                    # Retry without postOnly
+                    if "postOnly" in params:
+                        del params["postOnly"]
+                    response = await self._exchange.create_order(
+                        symbol=order.symbol,
+                        type=order.order_type,
+                        side=order.side,
+                        amount=order.quantity,
+                        price=price,
+                        params=params,
+                    )
+                else:
+                    raise
+
             order_id = response["id"]
-            filled_qty = float(response.get("filled", order.quantity))
-            avg_price = float(response.get("average", order.entry_price) or order.entry_price)
+            
+            filled_qty = 0.0
+            avg_price = 0.0
+            status = response.get("status", "open")
+
+
+            if is_limit and status != "closed":
+                timeout_sec = 45.0
+                poll_interval = 1.0
+                elapsed = 0.0
+                logger.info(
+                    "execution_agent.waiting_limit_fill",
+                    order_id=order_id,
+                    side=order.side,
+                    price=price,
+                    qty=order.quantity,
+                )
+                while elapsed < timeout_sec:
+                    await asyncio.sleep(poll_interval)
+                    elapsed += poll_interval
+                    try:
+                        order_status = await self._exchange.fetch_order(order_id, order.symbol)
+                        status = order_status.get("status", "open")
+                        filled_qty = float(order_status.get("filled", 0.0))
+                        avg_price = float(order_status.get("average", 0.0) or order_status.get("price", 0.0) or price)
+                        if status == "closed":
+                            break
+                        if status == "canceled":
+                            break
+                    except Exception as poll_exc:
+                        logger.warning("execution_agent.poll_order_failed", error=str(poll_exc))
+                
+                if status not in ("closed", "canceled"):
+                    logger.info("execution_agent.limit_timeout_cancelling", order_id=order_id, filled=filled_qty)
+                    try:
+                        await self._exchange.cancel_order(order_id, order.symbol)
+                        # Fetch final status one last time to capture final filled qty
+                        final_status = await self._exchange.fetch_order(order_id, order.symbol)
+                        filled_qty = float(final_status.get("filled", filled_qty))
+                        avg_price = float(final_status.get("average", avg_price) or final_status.get("price", avg_price) or price)
+                    except Exception as cancel_exc:
+                        logger.error("execution_agent.cancel_order_failed", error=str(cancel_exc))
+            else:
+                filled_qty = float(response.get("filled", order.quantity))
+                avg_price = float(response.get("average", order.entry_price) or order.entry_price)
+
+            if filled_qty <= 0.0:
+                logger.info("execution_agent.limit_order_unfilled", order_id=order_id)
+                return OrderResultEvent(
+                    symbol=order.symbol,
+                    timestamp=int(time.time() * 1000),
+                    order_id=order_id,
+                    side=order.side,
+                    filled_qty=0.0,
+                    avg_price=0.0,
+                    status="rejected",
+                    pnl=0.0,
+                )
 
             position = Position(
                 symbol=order.symbol,
@@ -178,8 +281,54 @@ class ExecutionAgent:
                 take_profit=order.take_profit,
                 opened_at=order.timestamp,
                 order_id=order_id,
+                confidence=order.confidence,
             )
             await self.state.add_position(position)
+
+            if not self.settings.paper_trading:
+                exit_side = "sell" if position.side == "long" else "buy"
+                
+                # 1. Take Profit resting Limit order
+                try:
+                    logger.info(
+                        "execution_agent.placing_resting_tp",
+                        symbol=position.symbol,
+                        side=exit_side,
+                        price=position.take_profit,
+                    )
+                    tp_resp = await self._exchange.create_order(
+                        symbol=position.symbol,
+                        type="limit",
+                        side=exit_side,
+                        amount=position.quantity,
+                        price=position.take_profit,
+                        params={"reduceOnly": True}
+                    )
+                    position.tp_order_id = tp_resp["id"]
+                    logger.info("execution_agent.resting_tp_placed", order_id=tp_resp["id"])
+                except Exception as tp_exc:
+                    logger.error("execution_agent.tp_order_failed", error=str(tp_exc))
+
+                # 2. Stop Loss resting Stop Market order
+                try:
+                    logger.info(
+                        "execution_agent.placing_resting_sl",
+                        symbol=position.symbol,
+                        side=exit_side,
+                        trigger_price=position.stop_loss,
+                    )
+                    sl_resp = await self._exchange.create_order(
+                        symbol=position.symbol,
+                        type="STOP_MARKET",
+                        side=exit_side,
+                        amount=position.quantity,
+                        price=None,
+                        params={"reduceOnly": True, "stopPrice": position.stop_loss}
+                    )
+                    position.sl_order_id = sl_resp["id"]
+                    logger.info("execution_agent.resting_sl_placed", order_id=sl_resp["id"])
+                except Exception as sl_exc:
+                    logger.error("execution_agent.sl_order_failed", error=str(sl_exc))
 
             logger.info(
                 "execution_agent.live_fill",
@@ -232,9 +381,48 @@ class ExecutionAgent:
                 continue
 
             for order_id, pos in list(self.state.open_positions.items()):
-                exit_reason = self._check_exit(pos, current_price)
-                if exit_reason:
-                    await self._close_position(pos, order_id, current_price, exit_reason)
+                if self.settings.paper_trading:
+                    exit_reason = self._check_exit(pos, current_price)
+                    if exit_reason:
+                        await self._close_position(pos, order_id, current_price, exit_reason)
+                else:
+                    # In live trading, check time barrier first
+                    now_ms = int(time.time() * 1000)
+                    if now_ms - pos.opened_at >= 15 * self.interval_ms:
+                        await self._close_position(pos, order_id, current_price, "timeout")
+                        continue
+
+                    # Check if Take Profit has been filled
+                    tp_filled = False
+                    tp_price = pos.take_profit
+                    if pos.tp_order_id:
+                        try:
+                            tp_status = await self._exchange.fetch_order(pos.tp_order_id, pos.symbol)
+                            if tp_status.get("status") == "closed":
+                                tp_filled = True
+                                tp_price = float(tp_status.get("average", pos.take_profit) or tp_status.get("price", pos.take_profit) or pos.take_profit)
+                        except Exception as e:
+                            logger.warning("execution_agent.fetch_tp_failed", order_id=pos.tp_order_id, error=str(e))
+
+                    if tp_filled:
+                        await self._close_position(pos, order_id, tp_price, "tp")
+                        continue
+
+                    # Check if Stop Loss has been filled
+                    sl_filled = False
+                    sl_price = pos.stop_loss
+                    if pos.sl_order_id:
+                        try:
+                            sl_status = await self._exchange.fetch_order(pos.sl_order_id, pos.symbol)
+                            if sl_status.get("status") == "closed":
+                                sl_filled = True
+                                sl_price = float(sl_status.get("average", pos.stop_loss) or sl_status.get("price", pos.stop_loss) or pos.stop_loss)
+                        except Exception as e:
+                            logger.warning("execution_agent.fetch_sl_failed", order_id=pos.sl_order_id, error=str(e))
+
+                    if sl_filled:
+                        await self._close_position(pos, order_id, sl_price, "sl")
+                        continue
 
     def _check_exit(self, pos: Position, price: float) -> Optional[str]:
         # 1. Check vertical barrier (time limit of 15 candle periods)
@@ -261,8 +449,55 @@ class ExecutionAgent:
         price: float,
         reason: str,
     ) -> None:
-        fee_rate = getattr(self.settings, "fee_rate", 0.0010)
-        fee = (pos.entry_price + price) * pos.quantity * (fee_rate / 2.0)
+        if not self.settings.paper_trading:
+            assert self._exchange is not None
+            
+            # Cancel TP order if reason is SL or timeout
+            if reason in ("sl", "timeout") and pos.tp_order_id:
+                try:
+                    logger.info("execution_agent.cancelling_resting_tp", order_id=pos.tp_order_id)
+                    await self._exchange.cancel_order(pos.tp_order_id, pos.symbol)
+                except Exception as exc:
+                    logger.warning("execution_agent.cancel_tp_failed", error=str(exc))
+
+            # Cancel SL order if reason is TP or timeout
+            if reason in ("tp", "timeout") and pos.sl_order_id:
+                try:
+                    logger.info("execution_agent.cancelling_resting_sl", order_id=pos.sl_order_id)
+                    await self._exchange.cancel_order(pos.sl_order_id, pos.symbol)
+                except Exception as exc:
+                    logger.warning("execution_agent.cancel_sl_failed", error=str(exc))
+
+            # Only place a market exit order if it's a timeout exit
+            if reason == "timeout":
+                try:
+                    exit_side = "sell" if pos.side == "long" else "buy"
+                    logger.info(
+                        "execution_agent.placing_exit_order",
+                        symbol=pos.symbol,
+                        side=exit_side,
+                        qty=pos.quantity,
+                        reason=reason,
+                    )
+                    response = await self._exchange.create_order(
+                        symbol=pos.symbol,
+                        type="market",
+                        side=exit_side,
+                        amount=pos.quantity,
+                    )
+                    avg_price = float(response.get("average", price) or response.get("price", price) or price)
+                    price = avg_price
+                except Exception as exc:
+                    logger.error(
+                        "execution_agent.exit_order_failed",
+                        error=str(exc),
+                        order_id=order_id,
+                    )
+
+        entry_fee = pos.entry_price * pos.quantity * 0.0002
+        exit_fee_rate = 0.0002 if reason == "tp" else 0.0004
+        exit_fee = price * pos.quantity * exit_fee_rate
+        fee = entry_fee + exit_fee
 
         if pos.side == "long":
             pnl = (price - pos.entry_price) * pos.quantity - fee

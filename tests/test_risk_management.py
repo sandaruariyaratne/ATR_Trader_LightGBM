@@ -43,14 +43,19 @@ def _build_agent(initial_capital: float = 10_000.0, confidence_threshold: float 
     bus.consume = AsyncMock()
     bus.publish = AsyncMock()
     state = StateManager(initial_capital=initial_capital)
+    state.latest_close = 30000.0
+    state.latest_atr = 150.0
     settings = Settings(
         confidence_threshold=confidence_threshold,
+        confidence_threshold_buy=confidence_threshold,
+        confidence_threshold_sell=confidence_threshold,
         max_position_pct=0.10,
         max_drawdown_pct=0.15,
         stop_loss_atr_mult=2.0,
         take_profit_atr_mult=3.0,
         max_open_positions=1,
         paper_trading=True,
+        sell_only=False,
     )
     return RiskManagementAgent(bus, state, settings), state
 

@@ -15,15 +15,16 @@ services:
       - TRADING_SYMBOL=AVAX/USDT
       - CANDLE_INTERVAL=1m
       - INITIAL_CAPITAL=10000
-      - CONFIDENCE_THRESHOLD_BUY=0.42
+      - CONFIDENCE_THRESHOLD_BUY=0.48
       - CONFIDENCE_THRESHOLD_SELL=0.42
       - MODEL_PATH=data/models/lightgbm_universal.pkl
       - MODEL_TYPE=xgboost
       - LEVERAGE=2.0
       - SELL_ONLY=false
       - PYTHONUNBUFFERED=1
-      - STOP_LOSS_ATR_MULT=3.0
-      - TAKE_PROFIT_ATR_MULT=2.0
+      - ORDER_TYPE=limit
+      - STOP_LOSS_ATR_MULT=2.0
+      - TAKE_PROFIT_ATR_MULT=3.0
     logging:
       driver: "json-file"
       options:
