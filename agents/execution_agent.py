@@ -443,12 +443,44 @@ class ExecutionAgent:
         if not self.settings.paper_trading:
             assert self._exchange is not None
             
-            # Cancel all active resting orders (TP & SL) for this symbol on the exchange to prevent orphans
-            try:
-                logger.info("execution_agent.cancelling_all_resting_orders", symbol=pos.symbol)
-                await self._exchange.cancel_all_orders(pos.symbol)
-            except Exception as exc:
-                logger.warning("execution_agent.cancel_all_orders_failed", error=str(exc))
+            exit_side = "sell" if pos.side == "long" else "buy"
+            
+            # 1. Cancel TP order if reason is SL or timeout
+            if reason in ("sl", "timeout") and pos.tp_order_id:
+                try:
+                    logger.info("execution_agent.cancelling_resting_tp", order_id=pos.tp_order_id)
+                    await self._exchange.cancel_order(pos.tp_order_id, pos.symbol)
+                except Exception as exc:
+                    logger.warning("execution_agent.cancel_tp_by_id_failed_trying_lookup", error=str(exc))
+                    try:
+                        open_orders = await self._exchange.fetch_open_orders(pos.symbol)
+                        for o in open_orders:
+                            if o.get("side") == exit_side and o.get("type") == "limit":
+                                if abs(float(o.get("price", 0.0)) - pos.take_profit) < 1e-4:
+                                    logger.info("execution_agent.cancelling_tp_by_lookup", order_id=o["id"])
+                                    await self._exchange.cancel_order(o["id"], pos.symbol)
+                                    break
+                    except Exception as fallback_exc:
+                        logger.error("execution_agent.cancel_tp_fallback_failed", error=str(fallback_exc))
+
+            # 2. Cancel SL order if reason is TP or timeout
+            if reason in ("tp", "timeout") and pos.sl_order_id:
+                try:
+                    logger.info("execution_agent.cancelling_resting_sl", order_id=pos.sl_order_id)
+                    await self._exchange.cancel_order(pos.sl_order_id, pos.symbol)
+                except Exception as exc:
+                    logger.warning("execution_agent.cancel_sl_by_id_failed_trying_lookup", error=str(exc))
+                    try:
+                        open_orders = await self._exchange.fetch_open_orders(pos.symbol)
+                        for o in open_orders:
+                            o_stop = float(o.get("triggerPrice") or o.get("stopPrice") or o.get("info", {}).get("stopPrice") or 0.0)
+                            if o.get("side") == exit_side and o_stop > 0.0:
+                                if abs(o_stop - pos.stop_loss) < 1e-4:
+                                    logger.info("execution_agent.cancelling_sl_by_lookup", order_id=o["id"])
+                                    await self._exchange.cancel_order(o["id"], pos.symbol)
+                                    break
+                    except Exception as fallback_exc:
+                        logger.error("execution_agent.cancel_sl_fallback_failed", error=str(fallback_exc))
 
             # Only place a market exit order if it's a timeout exit
             if reason == "timeout":
