@@ -472,13 +472,35 @@ class ExecutionAgent:
                     logger.warning("execution_agent.cancel_sl_by_id_failed_trying_lookup", error=str(exc))
                     try:
                         open_orders = await self._exchange.fetch_open_orders(pos.symbol)
+                        matched = False
                         for o in open_orders:
-                            o_stop = float(o.get("triggerPrice") or o.get("stopPrice") or o.get("info", {}).get("stopPrice") or 0.0)
-                            if o.get("side") == exit_side and o_stop > 0.0:
-                                if abs(o_stop - pos.stop_loss) < 1e-4:
+                            o_side = str(o.get("side") or "").lower()
+                            o_type = str(o.get("type") or "").lower()
+                            raw_info = o.get("info") or {}
+                            o_stop = float(o.get("triggerPrice") or o.get("stopPrice") or raw_info.get("stopPrice") or raw_info.get("triggerPrice") or 0.0)
+                            
+                            # Match by side and check if trigger price is within 0.005
+                            if o_side == exit_side.lower() and ("stop" in o_type or o_stop > 0.0):
+                                if abs(o_stop - pos.stop_loss) < 0.005:
                                     logger.info("execution_agent.cancelling_sl_by_lookup", order_id=o["id"])
                                     await self._exchange.cancel_order(o["id"], pos.symbol)
+                                    matched = True
                                     break
+                        if not matched:
+                            logger.warning(
+                                "execution_agent.cancel_sl_lookup_no_match",
+                                exit_side=exit_side,
+                                target_sl=pos.stop_loss,
+                                open_orders=[{
+                                    "id": o.get("id"),
+                                    "side": o.get("side"),
+                                    "type": o.get("type"),
+                                    "price": o.get("price"),
+                                    "triggerPrice": o.get("triggerPrice"),
+                                    "stopPrice": o.get("stopPrice"),
+                                    "raw_stopPrice": (o.get("info") or {}).get("stopPrice")
+                                } for o in open_orders]
+                            )
                     except Exception as fallback_exc:
                         logger.error("execution_agent.cancel_sl_fallback_failed", error=str(fallback_exc))
 
