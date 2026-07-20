@@ -163,6 +163,26 @@ class ExecutionAgent:
             pnl=0.0,
         )
 
+    async def _get_actual_fill(self, order_id: str, symbol: str, fallback_price: float) -> tuple[float, float]:
+        """
+        Fetch order details from the exchange to obtain the actual average filled price and filled quantity.
+        """
+        if self.settings.paper_trading or not self._exchange:
+            return 0.0, fallback_price
+
+        for attempt in range(3):
+            try:
+                order_info = await self._exchange.fetch_order(order_id, symbol)
+                filled_qty = float(order_info.get("filled", 0.0) or 0.0)
+                avg_price = float(order_info.get("average", 0.0) or order_info.get("price", 0.0) or fallback_price)
+                if filled_qty > 0.0:
+                    return filled_qty, avg_price
+            except Exception as e:
+                logger.warning("execution_agent.fetch_fill_failed", order_id=order_id, attempt=attempt, error=str(e))
+            await asyncio.sleep(0.5)
+
+        return 0.0, fallback_price
+
     # ── Live trading ──────────────────────────────────────────────────────────
 
     async def _live_execute(self, order: ApprovedOrderEvent) -> OrderResultEvent:
@@ -256,8 +276,11 @@ class ExecutionAgent:
                     except Exception as cancel_exc:
                         logger.error("execution_agent.cancel_order_failed", error=str(cancel_exc))
             else:
-                filled_qty = float(response.get("filled", order.quantity))
-                avg_price = float(response.get("average", order.entry_price) or order.entry_price)
+                # For market entry orders, query the actual fill details from the exchange
+                filled_qty, avg_price = await self._get_actual_fill(order_id, order.symbol, order.entry_price)
+                if filled_qty <= 0.0:
+                    filled_qty = float(response.get("filled", order.quantity) or order.quantity)
+                    avg_price = float(response.get("average", order.entry_price) or order.entry_price)
 
             if filled_qty <= 0.0:
                 logger.info("execution_agent.limit_order_unfilled", order_id=order_id)
@@ -422,7 +445,14 @@ class ExecutionAgent:
                     # The exchange will execute the STOP_MARKET order itself if hit.
                     exit_reason = self._check_exit(pos, current_price)
                     if exit_reason == "sl":
-                        await self._close_position(pos, order_id, pos.stop_loss, "sl")
+                        sl_price = pos.stop_loss
+                        if pos.sl_order_id:
+                            try:
+                                sl_info = await self._exchange.fetch_order(pos.sl_order_id, pos.symbol)
+                                sl_price = float(sl_info.get("average", pos.stop_loss) or sl_info.get("price", pos.stop_loss) or pos.stop_loss)
+                            except Exception as e:
+                                logger.warning("execution_agent.fetch_sl_fill_failed", order_id=pos.sl_order_id, error=str(e))
+                        await self._close_position(pos, order_id, sl_price, "sl")
                         continue
 
     def _check_exit(self, pos: Position, price: float) -> Optional[str]:
@@ -531,7 +561,8 @@ class ExecutionAgent:
                         side=exit_side,
                         amount=pos.quantity,
                     )
-                    avg_price = float(response.get("average", price) or response.get("price", price) or price)
+                    exit_order_id = response["id"]
+                    _, avg_price = await self._get_actual_fill(exit_order_id, pos.symbol, price)
                     price = avg_price
                 except Exception as exc:
                     logger.error(
