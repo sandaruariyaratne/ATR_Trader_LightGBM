@@ -22,7 +22,7 @@ services:
       - LEVERAGE=2.0
       - SELL_ONLY=false
       - PYTHONUNBUFFERED=1
-      - ORDER_TYPE=limit
+      - ORDER_TYPE=market
       - STOP_LOSS_ATR_MULT=2.0
       - TAKE_PROFIT_ATR_MULT=3.0
     logging:
