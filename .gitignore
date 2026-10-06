@@ -61,6 +61,14 @@ data/tmp/
 logs/
 *.log
 
+# Scratch and exploratory scripts
+scratch/
+
+# Frontend Dashboard
+node_modules/
+dashboard/node_modules/
+dashboard/dist/
+
 # Deployment artifacts
 *.tar.gz
 
