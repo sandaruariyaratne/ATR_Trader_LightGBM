@@ -7,15 +7,11 @@ import {
   Activity,
   Sliders,
   DollarSign,
-  CheckCircle2,
   ExternalLink,
   BarChart3,
   Terminal,
   Zap,
-  ArrowUpRight,
-  ArrowDownRight,
-  Clock,
-  Briefcase
+  ArrowUpRight
 } from 'lucide-react';
 import {
   CONFIDENCE_SWEEP,
@@ -144,13 +140,6 @@ export default function App() {
             onClick={() => setActiveTab('architecture')}
           >
             <Layers size={16} /> Agents & Architecture
-          </button>
-          <button
-            id="tab-cv"
-            className={`nav-tab-btn ${activeTab === 'cv' ? 'active' : ''}`}
-            onClick={() => setActiveTab('cv')}
-          >
-            <Briefcase size={16} /> CV Highlights
           </button>
         </nav>
 
@@ -567,60 +556,6 @@ export default function App() {
                     </div>
                   </div>
                 ))}
-              </div>
-            </div>
-          </section>
-        )}
-
-        {/* TAB 5: CV KEY TAKEAWAYS */}
-        {activeTab === 'cv' && (
-          <section className="glass-panel" style={{ padding: '2rem' }}>
-            <div style={{ marginBottom: '1.75rem' }}>
-              <h2 style={{ fontSize: '1.3rem', fontWeight: 700 }}>Key Project Highlights for Technical Interviewers & CV</h2>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-                Summary of quantitative, architectural, and production engineering accomplishments implemented in this repository.
-              </p>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
-              <div style={{ padding: '1.25rem', borderRadius: 'var(--radius-md)', background: 'rgba(15, 23, 42, 0.6)', border: '1px solid var(--border-subtle)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.75rem' }}>
-                  <CheckCircle2 size={20} className="text-emerald" />
-                  <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>1. Rigorous Quantitative ML Pipeline</h3>
-                </div>
-                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                  Engineered 36+ stationary microstructure features (multi-timeframe log-returns, VWAP deviations, taker imbalance ratios, and Force Index). Implemented Marcos López de Prado's Triple Barrier Method with strict out-of-sample forward testing across 2.55M 1-minute bars with zero look-ahead contamination.
-                </p>
-              </div>
-
-              <div style={{ padding: '1.25rem', borderRadius: 'var(--radius-md)', background: 'rgba(15, 23, 42, 0.6)', border: '1px solid var(--border-subtle)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.75rem' }}>
-                  <CheckCircle2 size={20} className="text-emerald" />
-                  <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>2. Dynamic ATR Volatility & Time Exits</h3>
-                </div>
-                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                  Replaced fragile fixed stop-losses with volatility-adaptive Average True Range bounds ($2.0\times\text{ATR}$ TP, $1.0\times\text{ATR}$ SL). Enforced a 15-candle vertical timeout barrier that improved win rate by +3.3% and compressed max drawdown to 3.89%.
-                </p>
-              </div>
-
-              <div style={{ padding: '1.25rem', borderRadius: 'var(--radius-md)', background: 'rgba(15, 23, 42, 0.6)', border: '1px solid var(--border-subtle)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.75rem' }}>
-                  <CheckCircle2 size={20} className="text-emerald" />
-                  <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>3. Decoupled Asynchronous Engine</h3>
-                </div>
-                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                  Architected with Python asyncio and CCXT Pro WebSockets into 6 decoupled domain agents communicating over a non-blocking typed EventBus. Ensures sub-millisecond dispatch and immune to network stutter during market volatility spikes.
-                </p>
-              </div>
-
-              <div style={{ padding: '1.25rem', borderRadius: 'var(--radius-md)', background: 'rgba(15, 23, 42, 0.6)', border: '1px solid var(--border-subtle)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.75rem' }}>
-                  <CheckCircle2 size={20} className="text-emerald" />
-                  <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>4. Production Cloud & DevOps Ready</h3>
-                </div>
-                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                  Containerized via Docker with OpenMP-optimized C-extensions for LightGBM. Includes automated Google Compute Engine provisioning (`deploy_to_gce.sh`), structured JSON logging (`structlog`), and comprehensive `pytest` test suites.
-                </p>
               </div>
             </div>
           </section>
